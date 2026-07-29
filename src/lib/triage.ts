@@ -1,7 +1,6 @@
 import type {
   Category,
   Channel,
-  PlanTier,
   Priority,
   TriageResult,
 } from "./types";
@@ -121,20 +120,6 @@ const CATEGORY_BASE_SCORE: Record<Category, number> = {
   "feature-request": 2,
 };
 
-const PLAN_WEIGHT: Record<PlanTier, number> = {
-  enterprise: 20,
-  pro: 12,
-  starter: 5,
-  free: 0,
-};
-
-const PLAN_LABEL: Record<PlanTier, string> = {
-  enterprise: "Enterprise customer",
-  pro: "Pro customer",
-  starter: "Starter customer",
-  free: "Free plan",
-};
-
 // Phone and chat callers are waiting live, so nudge them up slightly. Social
 // is public — an unhappy customer posting where others can see carries some
 // reputational urgency too.
@@ -189,7 +174,6 @@ export interface TriageInput {
   subject: string;
   body: string;
   channel: Channel;
-  planTier: PlanTier;
   /** Optional override if the category is already known. */
   category?: Category;
   /** Minutes the ticket has already waited, if known. */
@@ -218,12 +202,6 @@ export function triage(input: TriageInput): TriageResult {
       reasons.push(label);
       seenLabels.add(label);
     }
-  }
-
-  // Plan tier — enterprise SLAs are contractual.
-  score += PLAN_WEIGHT[input.planTier];
-  if (PLAN_WEIGHT[input.planTier] > 0) {
-    reasons.push(PLAN_LABEL[input.planTier]);
   }
 
   // Channel.

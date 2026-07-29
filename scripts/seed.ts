@@ -92,13 +92,11 @@ const rows: NewTicketRow[] = records.map((r) => {
       ? Math.round((resolvedAt - firstResponseAt) / 60000)
       : null;
 
-  // Materialize the triage engine's output. planTier is absent in the CSV, so
-  // default everyone to "starter" (documented assumption).
+  // Materialize the triage engine's output.
   const t = triage({
     subject: r["Ticket Subject"],
     body: description,
     channel,
-    planTier: "starter",
   });
 
   const csatRaw = r["Customer Satisfaction Rating"];

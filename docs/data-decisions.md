@@ -90,16 +90,19 @@ in JS per request would defeat SQL filtering entirely.
 |---|---|
 | Normalize customers into their own table | 139 emails repeat across rows, so email isn't a trustworthy key in synthetic data. A single denormalized table matches how the app queries. |
 | Dedupe or fuzzy-match customer names | Same reason — no reliable identity column. |
-| Impute `planTier` | **Not present in the source at all.** Every row is defaulted to `starter`. |
+| Invent a plan tier | **Not present in the source at all**, so it was removed rather than fabricated — see below. |
 | Repair brace-less token corruption | Unsafe to pattern-match (see above). |
 | Clean the lorem-ipsum resolution notes | They're obviously synthetic; rewriting them would fabricate content. |
 
-> ⚠️ **The `planTier` default is the most consequential assumption.** Plan tier
-> is a scoring signal in [`triage.ts`](../src/lib/triage.ts) (enterprise +20,
-> pro +12, starter +5, free 0). Because every imported row is `starter`, that
-> signal is effectively **switched off** for the whole dataset — it only varies
-> for tickets created through the New Ticket form. Any analysis of "do
-> enterprise customers get faster service" is meaningless on this data.
+> ⚠️ **Plan tier was removed, not defaulted.** Earlier versions invented a
+> `planTier` and set every imported row to `starter`, which fed a `+5` bonus
+> into every triage score. Since the field doesn't exist in the source, it is
+> now gone from the schema, the types, the form and the scoring engine.
+> Re-scoring without it lowered the average score from **34 to 29** and shifted
+> the priority mix (critical 164 → 115, high 2012 → 1789, low 3268 → 3496) —
+> the inflation was uniform, so it had been quietly nudging tickets across
+> thresholds. If real plan data ever arrives, reintroduce it as a genuine
+> column plus a weight in [`triage.ts`](../src/lib/triage.ts).
 
 ---
 

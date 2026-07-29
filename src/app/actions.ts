@@ -12,7 +12,7 @@ import {
   QUEUE_COUNTS_TAG,
 } from "@/lib/tickets";
 import { slaDeadlines } from "@/lib/sla";
-import type { Channel, PlanTier, Ticket } from "@/lib/types";
+import type { Channel, Gender, Priority, Ticket } from "@/lib/types";
 
 /**
  * Load the wide text fields the queue list deliberately skips. Called when the
@@ -68,12 +68,24 @@ export async function resolveTicket(
   revalidatePath("/");
 }
 
+/**
+ * Everything an agent records when logging a ticket. Mirrors the source CSV's
+ * columns, minus the ones that only exist after the fact (status, resolution,
+ * CSAT, response/resolution timestamps) and the auto-assigned id.
+ */
 export interface NewTicketInput {
+  customerName: string;
+  customerEmail: string;
+  customerAge?: number | null;
+  customerGender?: Gender | null;
+  productPurchased: string;
+  dateOfPurchase?: string | null;
+  ticketType: string;
   subject: string;
   body: string;
-  customerName: string;
-  planTier: PlanTier;
   channel: Channel;
+  /** What the customer says the urgency is — kept apart from the engine's. */
+  sourcePriority: Priority;
 }
 
 /** Triage and insert a new ticket; returns the created (scored) app ticket. */
@@ -82,7 +94,6 @@ export async function addTicket(input: NewTicketInput): Promise<Ticket> {
     subject: input.subject,
     body: input.body,
     channel: input.channel,
-    planTier: input.planTier,
     ageMinutes: 0,
   });
 
@@ -97,14 +108,18 @@ export async function addTicket(input: NewTicketInput): Promise<Ticket> {
     .insert(tickets)
     .values({
       id,
-      customerName: input.customerName,
-      customerEmail: "unknown@triageflow.local",
-      productPurchased: "—",
-      ticketType: "Technical issue",
-      ticketSubject: input.subject,
-      ticketDescription: input.body,
+      customerName: input.customerName.trim(),
+      customerEmail: input.customerEmail.trim(),
+      customerAge: input.customerAge ?? null,
+      customerGender: input.customerGender ?? null,
+      productPurchased: input.productPurchased,
+      dateOfPurchase: input.dateOfPurchase?.trim() || null,
+      ticketType: input.ticketType,
+      ticketSubject: input.subject.trim(),
+      ticketDescription: input.body.trim(),
       ticketStatus: "open",
-      sourcePriority: t.priority,
+      // The customer's claim, preserved alongside the engine's verdict below.
+      sourcePriority: input.sourcePriority,
       ticketChannel: input.channel,
       createdAt: now, // brand new — the SLA clock starts now
       atRiskAt: deadlines.atRiskAt,

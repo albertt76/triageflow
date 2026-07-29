@@ -3,7 +3,7 @@
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { type SlaState } from "@/lib/sla";
-import type { Category, Priority, Ticket } from "@/lib/types";
+import type { Category, Channel, Priority, Ticket } from "@/lib/types";
 import { formatDuration } from "@/lib/format";
 import {
   CategoryBadge,
@@ -20,6 +20,8 @@ import type {
   SearchField,
   SortKey,
 } from "@/lib/tickets";
+
+const CHANNEL_OPTIONS: Channel[] = ["email", "phone", "chat", "social"];
 
 const SEARCH_FIELD_OPTIONS: {
   value: SearchField;
@@ -45,6 +47,7 @@ export default function QueueView({
   matched,
   shown,
   limit,
+  products,
 }: {
   tickets: Ticket[];
   counts: QueueCounts;
@@ -52,6 +55,7 @@ export default function QueueView({
   matched: number;
   shown: number;
   limit: number;
+  products: string[];
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -99,6 +103,8 @@ export default function QueueView({
     filters.priority !== "all" ||
     filters.sla !== "all" ||
     filters.category !== "all" ||
+    filters.channel !== "all" ||
+    filters.product !== "all" ||
     Boolean(filters.query?.trim());
 
   const exportHref = (() => {
@@ -263,6 +269,34 @@ export default function QueueView({
           ))}
         </select>
         <select
+          value={filters.channel}
+          onChange={(e) =>
+            applyFilters({ channel: e.target.value as Channel | "all" })
+          }
+          aria-label="Filter by channel"
+          className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm capitalize outline-none focus:border-slate-500"
+        >
+          <option value="all">All channels</option>
+          {CHANNEL_OPTIONS.map((c) => (
+            <option key={c} value={c} className="capitalize">
+              {c}
+            </option>
+          ))}
+        </select>
+        <select
+          value={filters.product}
+          onChange={(e) => applyFilters({ product: e.target.value })}
+          aria-label="Filter by product"
+          className="max-w-[190px] rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-500"
+        >
+          <option value="all">All products</option>
+          {products.map((p) => (
+            <option key={p} value={p}>
+              {p}
+            </option>
+          ))}
+        </select>
+        <select
           value={filters.sort}
           onChange={(e) => applyFilters({ sort: e.target.value as SortKey })}
           aria-label="Sort"
@@ -291,6 +325,8 @@ export default function QueueView({
                 priority: "all",
                 sla: "all",
                 category: "all",
+                channel: "all",
+                product: "all",
                 query: "",
                 searchField: "subject",
               })

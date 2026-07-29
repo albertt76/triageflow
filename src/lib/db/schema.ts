@@ -75,6 +75,7 @@ export const tickets = sqliteTable(
     index("idx_tickets_status").on(t.ticketStatus),
     index("idx_tickets_triage_pri").on(t.triagePriority),
     index("idx_tickets_channel").on(t.ticketChannel),
+    index("idx_tickets_product").on(t.productPurchased),
     index("idx_tickets_type").on(t.ticketType),
     // Default "smart priority" sort: status filter then score, descending.
     index("idx_tickets_queue_sort").on(t.ticketStatus, desc(t.triageScore), desc(t.id)),

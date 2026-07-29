@@ -1,4 +1,4 @@
-import { getQueueData } from "@/lib/tickets";
+import { getQueueData, getFilterOptions } from "@/lib/tickets";
 import { parseQueueFilters } from "@/lib/queue-params";
 import QueueView from "@/components/QueueView";
 
@@ -11,8 +11,8 @@ export default async function QueuePage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const filters = parseQueueFilters(await searchParams);
-  const { tickets, counts, matched, shown, limit } =
-    await getQueueData(filters);
+  const [{ tickets, counts, matched, shown, limit }, { products }] =
+    await Promise.all([getQueueData(filters), getFilterOptions()]);
 
   return (
     <QueueView
@@ -22,6 +22,7 @@ export default async function QueuePage({
       matched={matched}
       shown={shown}
       limit={limit}
+      products={products}
     />
   );
 }

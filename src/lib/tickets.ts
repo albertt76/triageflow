@@ -4,7 +4,7 @@ import { and, asc, desc, eq, inArray, like, sql, type SQL } from "drizzle-orm";
 import { db } from "./db/client";
 import { tickets, type TicketRow } from "./db/schema";
 import { type SlaState } from "./sla";
-import type { Category, Priority, Ticket } from "./types";
+import type { Category, Channel, Priority, Ticket } from "./types";
 import { formatAgo } from "./format";
 
 /** Cache tag for the unfiltered headline counts; busted by the write actions. */
@@ -74,7 +74,6 @@ function baseTicketFields(row: ListRow) {
     id: `TF-${row.id}`,
     subject: row.ticketSubject,
     customerName: row.customerName,
-    planTier: "starter" as const,
     channel: row.ticketChannel,
     category: row.triageCategory as Category,
     status: toAppStatus(row),
@@ -108,7 +107,19 @@ export function rowToTicket(row: TicketRow): Ticket {
     body: row.ticketDescription,
     customerName: row.customerName,
     customerEmail: row.customerEmail,
-    planTier: "starter", // not captured in the source data
+    customerAge: row.customerAge,
+    customerGender: row.customerGender,
+    productPurchased: row.productPurchased,
+    dateOfPurchase: row.dateOfPurchase,
+    ticketType: row.ticketType,
+    sourcePriority: row.sourcePriority,
+    createdAtIso: new Date(row.createdAt).toISOString(),
+    firstResponseAtIso:
+      row.firstResponseAt != null
+        ? new Date(row.firstResponseAt).toISOString()
+        : null,
+    resolvedAtIso:
+      row.resolvedAt != null ? new Date(row.resolvedAt).toISOString() : null,
     channel: row.ticketChannel,
     category: row.triageCategory as Category,
     status: toAppStatus(row),
@@ -167,6 +178,8 @@ export interface QueueFilters {
   priority?: Priority | "all";
   sla?: SlaState | "all";
   category?: Category | "all";
+  channel?: Channel | "all";
+  product?: string | "all";
   query?: string;
   searchField?: SearchField;
   includeResolved?: boolean;
@@ -190,6 +203,12 @@ function buildWhere(f: QueueFilters, now: number): SQL | undefined {
   }
   if (f.category && f.category !== "all") {
     clauses.push(eq(tickets.triageCategory, f.category));
+  }
+  if (f.channel && f.channel !== "all") {
+    clauses.push(eq(tickets.ticketChannel, f.channel));
+  }
+  if (f.product && f.product !== "all") {
+    clauses.push(eq(tickets.productPurchased, f.product));
   }
   // Search targets one explicitly chosen field rather than OR-ing across
   // several, so a query like "smith" can't match an unrelated subject line.
@@ -348,3 +367,35 @@ export async function getTicket(id: number): Promise<Ticket | null> {
 export function parseTicketId(appId: string): number {
   return Number(appId.replace(/^TF-/, ""));
 }
+
+export interface FilterOptions {
+  products: string[];
+  ticketTypes: string[];
+}
+
+/**
+ * Distinct values for the product / ticket-type dropdowns, read from the data
+ * rather than hardcoded so they can't drift from what's actually in the table.
+ * Cached — the set only changes when a new ticket introduces a new value.
+ */
+export const getFilterOptions = unstable_cache(
+  async (): Promise<FilterOptions> => {
+    const [products, types] = await Promise.all([
+      db
+        .selectDistinct({ v: tickets.productPurchased })
+        .from(tickets)
+        .orderBy(asc(tickets.productPurchased)),
+      db
+        .selectDistinct({ v: tickets.ticketType })
+        .from(tickets)
+        .orderBy(asc(tickets.ticketType)),
+    ]);
+    const clean = (rows: { v: string | null }[]) =>
+      rows
+        .map((r) => r.v)
+        .filter((v): v is string => !!v && v.trim() !== "" && v !== "—");
+    return { products: clean(products), ticketTypes: clean(types) };
+  },
+  ["filter-options"],
+  { tags: [QUEUE_COUNTS_TAG], revalidate: 300 },
+);

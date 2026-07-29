@@ -88,12 +88,6 @@ export default function TicketDrawer({
               </h2>
               <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-slate-500">
                 <span>{ticket.customerName}</span>
-                {detail?.customerEmail && (
-                  <span className="text-slate-400">
-                    · {detail.customerEmail}
-                  </span>
-                )}
-                <span className="capitalize">· {ticket.planTier} plan</span>
                 <ChannelTag channel={ticket.channel} />
                 <span>· {ticket.createdAtLabel}</span>
               </div>
@@ -166,6 +160,61 @@ export default function TicketDrawer({
             )}
           </section>
 
+          {/* Every remaining field from the source record. */}
+          <section>
+            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+              Ticket details
+            </h3>
+            {detail ? (
+              <dl className="grid grid-cols-1 gap-x-4 gap-y-2 rounded-lg border border-slate-200 bg-white p-3 text-sm sm:grid-cols-2">
+                <Row label="Customer" value={detail.customerName} />
+                <Row label="Email" value={detail.customerEmail} />
+                <Row label="Age" value={detail.customerAge} />
+                <Row label="Gender" value={detail.customerGender} />
+                <Row label="Product" value={detail.productPurchased} />
+                <Row label="Purchased" value={detail.dateOfPurchase} />
+                <Row label="Ticket type" value={detail.ticketType} />
+                <Row label="Channel" value={detail.channel} capitalize />
+                <Row label="Status" value={detail.status} />
+                <Row
+                  label="Priority (customer)"
+                  value={detail.sourcePriority}
+                  capitalize
+                />
+                <Row
+                  label="Priority (engine)"
+                  value={`${detail.priority} · score ${detail.score}/100`}
+                  capitalize
+                />
+                <Row label="Category (engine)" value={detail.category} />
+                <Row label="Created" value={formatIso(detail.createdAtIso)} />
+                <Row
+                  label="First response"
+                  value={formatIso(detail.firstResponseAtIso)}
+                />
+                <Row label="Resolved" value={formatIso(detail.resolvedAtIso)} />
+                <Row
+                  label="Time to resolve"
+                  value={
+                    detail.resolutionMinutes != null
+                      ? formatDuration(detail.resolutionMinutes)
+                      : null
+                  }
+                />
+                <Row
+                  label="Satisfaction"
+                  value={detail.csat != null ? `${detail.csat} / 5` : null}
+                />
+                <Row label="Assignee" value={detail.assignee} />
+              </dl>
+            ) : (
+              <div className="space-y-2 rounded-lg border border-slate-200 bg-white p-3">
+                <div className="h-3 w-2/3 animate-pulse rounded bg-slate-100" />
+                <div className="h-3 w-1/2 animate-pulse rounded bg-slate-100" />
+              </div>
+            )}
+          </section>
+
           <section>
             <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
               Resolution notes
@@ -216,4 +265,38 @@ export default function TicketDrawer({
       </aside>
     </div>
   );
+}
+
+/** One definition-list entry; renders an em-dash when the value is absent. */
+function Row({
+  label,
+  value,
+  capitalize,
+}: {
+  label: string;
+  value?: string | number | null;
+  capitalize?: boolean;
+}) {
+  const empty = value == null || value === "";
+  return (
+    <div className="flex justify-between gap-3 sm:block">
+      <dt className="text-xs text-slate-400">{label}</dt>
+      <dd
+        className={`text-sm ${empty ? "text-slate-300" : "text-slate-700"} ${
+          capitalize ? "capitalize" : ""
+        } break-words`}
+      >
+        {empty ? "—" : value}
+      </dd>
+    </div>
+  );
+}
+
+/** "2026-07-29T18:36Z" → "Jul 29, 2026, 2:36 PM" (local). */
+function formatIso(iso?: string | null): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime())
+    ? null
+    : d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 }

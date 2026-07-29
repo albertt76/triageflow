@@ -1,6 +1,6 @@
 import type { QueueFilters, SearchField, SortKey } from "./tickets";
 import type { SlaState } from "./sla";
-import type { Category, Priority } from "./types";
+import type { Category, Channel, Priority } from "./types";
 
 const PRIORITIES: Priority[] = ["critical", "high", "medium", "low"];
 const SLA_STATES: SlaState[] = ["breached", "at-risk", "on-track"];
@@ -12,6 +12,7 @@ const CATEGORIES: Category[] = [
   "how-to",
   "feature-request",
 ];
+const CHANNELS: Channel[] = ["email", "phone", "chat", "social"];
 const SORTS: SortKey[] = ["smart", "sla", "newest", "oldest"];
 const SEARCH_FIELDS: SearchField[] = ["subject", "customer", "email", "id"];
 export const DEFAULT_SEARCH_FIELD: SearchField = "subject";
@@ -37,6 +38,9 @@ export function parseQueueFilters(
     priority: pick(get("priority"), PRIORITIES),
     sla: pick(get("sla"), SLA_STATES),
     category: pick(get("category"), CATEGORIES),
+    channel: pick(get("channel"), CHANNELS),
+    // Free-form (43 products); trusted only as an equality match in SQL.
+    product: get("product")?.trim() || "all",
     query: get("q") ?? "",
     searchField: (() => {
       const raw = get("field");
@@ -58,6 +62,8 @@ export function filtersToQuery(f: QueueFilters): string {
   if (f.priority && f.priority !== "all") p.set("priority", f.priority);
   if (f.sla && f.sla !== "all") p.set("sla", f.sla);
   if (f.category && f.category !== "all") p.set("category", f.category);
+  if (f.channel && f.channel !== "all") p.set("channel", f.channel);
+  if (f.product && f.product !== "all") p.set("product", f.product);
   if (f.query?.trim()) p.set("q", f.query.trim());
   // Kept even with an empty query so the chosen field stays selected while the
   // user clears the box to type a new value.

@@ -31,7 +31,7 @@ Then open http://localhost:3000 (sign in with **Use demo credentials**).
 
 All filtering, sorting, and counting happen **in SQL across the whole table** — not over a client-side slice — so "At risk" reflects every matching row in the database, not just what's on screen. The row limit (200) only caps what gets rendered; the header always reports the true match count.
 
-- **Filters:** priority (severity), SLA status (breached / at risk / on track), category, field-targeted search, and show/hide resolved. They combine with AND.
+- **Filters:** priority (severity), SLA status (breached / at risk / on track), category, **channel**, **product purchased**, field-targeted search, and show/hide resolved. They combine with AND. Channel and product option lists are read from the data, so they can't drift from it.
 - **Search targets one field at a time** — pick **Subject**, **Customer name**, **Email**, or **ID** from the dropdown, then type a value. Text fields match on "contains" (case-insensitive); **ID** is an exact primary-key lookup and accepts `1349` or `TF-1349`. Non-numeric input in ID mode returns nothing rather than silently matching everything.
 - **SLA state is computed in SQL** from each ticket's live age (`now - created_at`) against the per-priority target in [sla.ts](src/lib/sla.ts) — the fragment in [tickets.ts](src/lib/tickets.ts) mirrors `slaStatus()` exactly (verified: SQL and JS agree exactly). Because age is derived live, the SLA clock advances between page loads.
 - **Filters live in the URL** (`/?priority=high&sla=at-risk`), so views are shareable, bookmarkable, and survive back/forward.
@@ -57,7 +57,7 @@ A filter change costs **one round-trip** to the database. Three things get it th
 
 - The source's `First Response Time` / `Time to Resolution` are **absolute timestamps, not durations**, and are internally inconsistent (resolution precedes first-response in ~49% of closed rows). We keep them raw and derive `resolution_minutes` **only** where `resolved_at > first_response_at` (~1,400 rows). Insights labels this sample size.
 - The dataset is **time-skipped onto a window ending at seed time**: closed tickets spread across the last 2 years, open ones created within the last 30 days (skewed toward recent, so the queue isn't uniformly breached). The source timestamps are unusable as a clock, so `created_at` is synthesized — see [docs/data-decisions.md](docs/data-decisions.md). Re-run `npm run db:seed` to rebase onto a fresh "now".
-- `planTier` isn't in the CSV → imported tickets default to `starter` (one lever in the seed script).
+- **There is no plan tier in the source data**, so the app doesn't have one. It was previously fabricated (every row `starter`), which inflated every triage score by 5; removing it dropped the average score from 34 to 29.
 - A handful (~7) of malformed brace tokens in descriptions can't be cleanly substituted and are left as-is.
 
 ## How it maps to the role
@@ -72,7 +72,8 @@ Every feature answers a specific line from Jordan's email:
 | "I escalate to engineering / senior staff" | One-click **Escalate** on every ticket |
 | "I monitor CSAT and recurring complaints" | **Insights** page: recurring-pattern alert, volume by category, CSAT trend |
 | "I log resolution notes so the team can learn" | **Resolution notes** field on every ticket; recently-resolved tickets stay in the queue (toggle "Hide resolved" off) so notes are reviewable |
-| Tickets arrive over chat / email / phone | **New Ticket** intake form triages each submission the instant it's logged |
+| Needing the full record on a ticket | Clicking a ticket opens a drawer showing **every stored field** — customer details, product, both priorities (customer-stated vs engine), all timestamps, CSAT and assignee |
+| Tickets arrive over chat / email / phone / social | **New Ticket** intake form captures every field the source dataset has — customer name, email, age, gender, product, purchase date, ticket type, channel, customer-stated priority, subject and description — and triages the submission the instant it's logged |
 | Console access | **Login screen** gates the app (demo auth, session stored in the browser) |
 
 ## How the triage engine works
@@ -80,7 +81,6 @@ Every feature answers a specific line from Jordan's email:
 `src/lib/triage.ts` scores each ticket 0–100 from its content and context, and — importantly — **returns the reasons why**, so a human can always sanity-check or override it. Signals:
 
 - **Content keywords** — "double charged", "data loss", "cancel", "urgent", etc. raise urgency; category is inferred from the text.
-- **Plan tier** — enterprise SLAs are contractual, so those tickets rank higher.
 - **Channel** — phone/chat callers are waiting live.
 - **Age** — tickets creep up the queue as they wait.
 

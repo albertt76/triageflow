@@ -14,7 +14,7 @@ export type Priority = "critical" | "high" | "medium" | "low";
 
 export type Status = "new" | "in-progress" | "escalated" | "resolved";
 
-export type PlanTier = "free" | "starter" | "pro" | "enterprise";
+export type Gender = "Male" | "Female" | "Other";
 
 export interface TriageResult {
   priority: Priority;
@@ -27,15 +27,7 @@ export interface TriageResult {
 export interface Ticket {
   id: string;
   subject: string;
-  /**
-   * Full customer message. Absent on queue-list rows — the list query skips the
-   * wide text columns for speed; the drawer loads them on demand.
-   */
-  body?: string;
   customerName: string;
-  /** Detail-only, like `body` — the list projection omits it. */
-  customerEmail?: string;
-  planTier: PlanTier;
   channel: Channel;
   category: Category;
   status: Status;
@@ -43,13 +35,28 @@ export interface Ticket {
   /** Numeric triage score, higher = more urgent. */
   score: number;
   reasons: string[];
-  /** Minutes since the ticket was created (relative to app load). */
+  /** Minutes since the ticket was created (or, once closed, time to resolve). */
   ageMinutes: number;
   createdAtLabel: string;
   assignee: string | null;
-  /** Resolved tickets only. */
   csat: number | null;
   resolutionMinutes: number | null;
-  /** Like `body`, absent on list rows until the drawer loads the detail. */
+
+  /**
+   * Detail-only fields. The queue list projection omits these for speed; the
+   * drawer loads them on demand via `fetchTicketDetail`.
+   */
+  body?: string;
   resolutionNote?: string | null;
+  customerEmail?: string;
+  customerAge?: number | null;
+  customerGender?: Gender | null;
+  productPurchased?: string;
+  dateOfPurchase?: string | null;
+  ticketType?: string;
+  /** Priority the customer/source claimed, as opposed to the engine's. */
+  sourcePriority?: Priority;
+  createdAtIso?: string;
+  firstResponseAtIso?: string | null;
+  resolvedAtIso?: string | null;
 }
