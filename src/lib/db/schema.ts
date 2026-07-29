@@ -42,8 +42,15 @@ export const tickets = sqliteTable(
     resolvedAt: integer("resolved_at"), // unix ms, NULL unless closed
     customerSatisfactionRating: integer("customer_satisfaction_rating"),
 
-    // App-managed (not in the CSV): who the ticket is assigned/escalated to.
+    // App-managed (not in the CSV): which team member owns the ticket, or NULL
+    // when unassigned. Assignment is deliberately independent of status — it
+    // records ownership, not lifecycle stage.
     assignee: text("assignee"),
+
+    // App-managed: when the ticket was escalated to engineering, or NULL.
+    // Kept separate from `assignee` so assigning an owner never changes the
+    // displayed status (escalation does, assignment doesn't).
+    escalatedAt: integer("escalated_at"),
 
     // Synthesized creation time, epoch ms (see lib/age.ts). The source
     // timestamps are unusable, so the dataset is rebased onto a window ending
@@ -76,6 +83,7 @@ export const tickets = sqliteTable(
     index("idx_tickets_triage_pri").on(t.triagePriority),
     index("idx_tickets_channel").on(t.ticketChannel),
     index("idx_tickets_product").on(t.productPurchased),
+    index("idx_tickets_assignee").on(t.assignee),
     index("idx_tickets_type").on(t.ticketType),
     // Default "smart priority" sort: status filter then score, descending.
     index("idx_tickets_queue_sort").on(t.ticketStatus, desc(t.triageScore), desc(t.id)),

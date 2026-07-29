@@ -15,8 +15,10 @@ export const QUEUE_COUNTS_TAG = "queue-counts";
  *   open   → new        pending → in-progress      closed → resolved
  * An assignee of "Engineering" means it was escalated.
  */
-function toAppStatus(row: Pick<TicketRow, "assignee" | "ticketStatus">) {
-  if (row.assignee === "Engineering") return "escalated" as const;
+function toAppStatus(row: Pick<TicketRow, "escalatedAt" | "ticketStatus">) {
+  // Escalation is its own flag — being assigned to a teammate does not change
+  // a ticket's status.
+  if (row.escalatedAt != null) return "escalated" as const;
   switch (row.ticketStatus) {
     case "open":
       return "new" as const;
@@ -56,6 +58,7 @@ const LIST_COLUMNS = {
   resolutionMinutes: tickets.resolutionMinutes,
   customerSatisfactionRating: tickets.customerSatisfactionRating,
   assignee: tickets.assignee,
+  escalatedAt: tickets.escalatedAt,
 } as const;
 
 /** The subset of a ticket row needed to render a list entry. */
@@ -120,6 +123,8 @@ export function rowToTicket(row: TicketRow): Ticket {
         : null,
     resolvedAtIso:
       row.resolvedAt != null ? new Date(row.resolvedAt).toISOString() : null,
+    escalatedAtIso:
+      row.escalatedAt != null ? new Date(row.escalatedAt).toISOString() : null,
     channel: row.ticketChannel,
     category: row.triageCategory as Category,
     status: toAppStatus(row),
@@ -188,6 +193,8 @@ export interface QueueFilters {
    *   unresolved (default) = new + in progress + escalated
    */
   status?: StatusFilter;
+  /** "all" | "assigned" | "unassigned" | a specific team member's name. */
+  assignment?: string;
   sort?: SortKey;
 }
 
@@ -206,7 +213,7 @@ function buildWhere(f: QueueFilters, now: number): SQL | undefined {
   // SLA state is only meaningful for unresolved tickets, so an SLA filter
   // implies them regardless of the chosen status.
   const slaActive = f.sla && f.sla !== "all";
-  const notEscalated = sql`(${tickets.assignee} is null or ${tickets.assignee} != 'Engineering')`;
+  const notEscalated = sql`${tickets.escalatedAt} is null`;
   switch (f.status ?? "unresolved") {
     case "new":
       clauses.push(eq(tickets.ticketStatus, "open"), notEscalated);
@@ -216,7 +223,7 @@ function buildWhere(f: QueueFilters, now: number): SQL | undefined {
       break;
     case "escalated":
       clauses.push(
-        eq(tickets.assignee, "Engineering"),
+        sql`${tickets.escalatedAt} is not null`,
         inArray(tickets.ticketStatus, ["open", "pending"]),
       );
       break;
@@ -240,6 +247,18 @@ function buildWhere(f: QueueFilters, now: number): SQL | undefined {
   }
   if (f.category && f.category !== "all") {
     clauses.push(eq(tickets.triageCategory, f.category));
+  }
+  switch (f.assignment ?? "all") {
+    case "all":
+      break;
+    case "assigned":
+      clauses.push(sql`${tickets.assignee} is not null`);
+      break;
+    case "unassigned":
+      clauses.push(sql`${tickets.assignee} is null`);
+      break;
+    default:
+      clauses.push(eq(tickets.assignee, f.assignment!));
   }
   if (f.channel && f.channel !== "all") {
     clauses.push(eq(tickets.ticketChannel, f.channel));

@@ -6,6 +6,7 @@ import type {
 } from "./tickets";
 import type { SlaState } from "./sla";
 import type { Category, Channel, Priority } from "./types";
+import { TEAM } from "./team";
 
 const PRIORITIES: Priority[] = ["critical", "high", "medium", "low"];
 const SLA_STATES: SlaState[] = ["breached", "at-risk", "on-track"];
@@ -55,6 +56,12 @@ export function parseQueueFilters(
     channel: pick(get("channel"), CHANNELS),
     // Free-form (43 products); trusted only as an equality match in SQL.
     product: get("product")?.trim() || "all",
+    assignment: (() => {
+      const raw = get("assignment")?.trim();
+      if (!raw) return "all";
+      const allowed = ["all", "assigned", "unassigned", ...TEAM];
+      return allowed.includes(raw) ? raw : "all";
+    })(),
     query: get("q") ?? "",
     searchField: (() => {
       const raw = get("field");
@@ -84,6 +91,8 @@ export function filtersToQuery(f: QueueFilters): string {
   if (f.category && f.category !== "all") p.set("category", f.category);
   if (f.channel && f.channel !== "all") p.set("channel", f.channel);
   if (f.product && f.product !== "all") p.set("product", f.product);
+  if (f.assignment && f.assignment !== "all")
+    p.set("assignment", f.assignment);
   if (f.query?.trim()) p.set("q", f.query.trim());
   // Kept even with an empty query so the chosen field stays selected while the
   // user clears the box to type a new value.

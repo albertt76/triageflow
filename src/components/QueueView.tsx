@@ -48,7 +48,13 @@ const SEARCH_FIELD_OPTIONS: {
   { value: "id", label: "ID", placeholder: "e.g. 1349 or TF-1349" },
 ];
 import { filtersToQuery } from "@/lib/queue-params";
-import { escalateTicket, startTicket, resolveTicket } from "@/app/actions";
+import {
+  escalateTicket,
+  startTicket,
+  resolveTicket,
+  assignTicket,
+} from "@/app/actions";
+import { TEAM } from "@/lib/team";
 
 export default function QueueView({
   tickets,
@@ -116,6 +122,7 @@ export default function QueueView({
     filters.channel !== "all" ||
     filters.product !== "all" ||
     filters.status !== "unresolved" ||
+    filters.assignment !== "all" ||
     Boolean(filters.query?.trim());
 
   const exportHref = (() => {
@@ -319,6 +326,21 @@ export default function QueueView({
           <option value="oldest">Oldest first</option>
         </select>
         <select
+          value={filters.assignment}
+          onChange={(e) => applyFilters({ assignment: e.target.value })}
+          aria-label="Filter by assignment"
+          className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-500"
+        >
+          <option value="all">Anyone</option>
+          <option value="assigned">Assigned</option>
+          <option value="unassigned">Unassigned</option>
+          {TEAM.map((m) => (
+            <option key={m} value={m}>
+              {m}
+            </option>
+          ))}
+        </select>
+        <select
           value={filters.status}
           onChange={(e) =>
             applyFilters({ status: e.target.value as StatusFilter })
@@ -344,6 +366,7 @@ export default function QueueView({
                 query: "",
                 searchField: "subject",
                 status: "unresolved",
+                assignment: "all",
               })
             }
             className="rounded-md px-2 py-2 text-sm font-medium text-slate-500 hover:text-slate-800"
@@ -411,6 +434,7 @@ export default function QueueView({
           run(() => resolveTicket(id, note, 5));
           setSelectedId(null);
         }}
+        onAssign={(id, assignee) => run(() => assignTicket(id, assignee))}
       />
     </div>
   );
@@ -479,6 +503,11 @@ function TicketRow({ ticket, onOpen }: { ticket: Ticket; onOpen: () => void }) {
             <span>{ticket.customerName}</span>
             <ChannelTag channel={ticket.channel} />
             <CategoryBadge category={ticket.category} />
+            {ticket.assignee && (
+              <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[11px] font-medium text-slate-600">
+                {ticket.assignee}
+              </span>
+            )}
           </div>
         </div>
         <div className="hidden w-40 shrink-0 sm:block">

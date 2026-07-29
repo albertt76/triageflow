@@ -12,6 +12,7 @@ import {
   QUEUE_COUNTS_TAG,
 } from "@/lib/tickets";
 import { slaDeadlines } from "@/lib/sla";
+import { isTeamMember } from "@/lib/team";
 import type { Channel, Gender, Priority, Ticket } from "@/lib/types";
 
 /**
@@ -24,9 +25,29 @@ export async function fetchTicketDetail(appId: string): Promise<Ticket | null> {
 }
 
 export async function escalateTicket(appId: string): Promise<void> {
+  // Escalation is its own flag, so it doesn't overwrite the ticket's owner.
   await db
     .update(tickets)
-    .set({ assignee: "Engineering" })
+    .set({ escalatedAt: Date.now() })
+    .where(eq(tickets.id, parseTicketId(appId)));
+  updateTag(QUEUE_COUNTS_TAG);
+  revalidatePath("/");
+}
+
+/**
+ * Assign a ticket to a team member, or pass null to unassign.
+ *
+ * Deliberately does NOT touch `ticketStatus` — ownership and lifecycle stage
+ * are independent, so assigning work never advances a ticket's status.
+ */
+export async function assignTicket(
+  appId: string,
+  assignee: string | null,
+): Promise<void> {
+  const next = isTeamMember(assignee) ? assignee : null;
+  await db
+    .update(tickets)
+    .set({ assignee: next })
     .where(eq(tickets.id, parseTicketId(appId)));
   updateTag(QUEUE_COUNTS_TAG);
   revalidatePath("/");

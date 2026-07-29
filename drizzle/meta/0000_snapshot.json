@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "0880cd0e-62da-4e71-9f07-8bf1afdcb31d",
+  "id": "18a45570-1f51-453a-910e-bea4bd4ca3b5",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "tickets": {
@@ -133,6 +133,13 @@
           "notNull": false,
           "autoincrement": false
         },
+        "escalated_at": {
+          "name": "escalated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "integer",
@@ -220,6 +227,13 @@
           "name": "idx_tickets_product",
           "columns": [
             "product_purchased"
+          ],
+          "isUnique": false
+        },
+        "idx_tickets_assignee": {
+          "name": "idx_tickets_assignee",
+          "columns": [
+            "assignee"
           ],
           "isUnique": false
         },

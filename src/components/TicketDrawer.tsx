@@ -13,6 +13,7 @@ import {
 import { SlaMeter } from "./SlaMeter";
 import { PRIORITY_STYLE } from "@/lib/ui";
 import { fetchTicketDetail } from "@/app/actions";
+import { TEAM } from "@/lib/team";
 
 export default function TicketDrawer({
   ticket,
@@ -21,6 +22,7 @@ export default function TicketDrawer({
   onEscalate,
   onStart,
   onResolve,
+  onAssign,
 }: {
   ticket: Ticket | null;
   busy?: boolean;
@@ -28,6 +30,7 @@ export default function TicketDrawer({
   onEscalate: (id: string) => void;
   onStart: (id: string) => void;
   onResolve: (id: string, note: string) => void;
+  onAssign: (id: string, assignee: string | null) => void;
 }) {
   const [note, setNote] = useState("");
   // The queue list omits the wide text columns, so load them when opened.
@@ -103,10 +106,12 @@ export default function TicketDrawer({
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <PriorityBadge priority={ticket.priority} />
             <CategoryBadge category={ticket.category} />
-            {ticket.assignee && (
-              <span className="text-xs text-slate-500">
-                → {ticket.assignee}
+            {ticket.assignee ? (
+              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700">
+                {ticket.assignee}
               </span>
+            ) : (
+              <span className="text-xs text-slate-400">Unassigned</span>
             )}
           </div>
           {/* The customer's own read, next to the engine's, so a mismatch is
@@ -138,6 +143,29 @@ export default function TicketDrawer({
         </div>
 
         <div className="flex-1 space-y-5 overflow-y-auto px-5 py-4">
+          <section>
+            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+              Assigned to
+            </h3>
+            <select
+              value={ticket.assignee ?? ""}
+              disabled={busy}
+              onChange={(e) => onAssign(ticket.id, e.target.value || null)}
+              aria-label="Assign this ticket"
+              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200 disabled:opacity-50"
+            >
+              <option value="">Unassigned</option>
+              {TEAM.map((m) => (
+                <option key={m} value={m}>
+                  {m}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 text-xs text-slate-400">
+              Assigning an owner doesn&apos;t change the ticket&apos;s status.
+            </p>
+          </section>
+
           <section>
             <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
               SLA — {formatDuration(SLA_TARGET_MINUTES[ticket.priority])} target
@@ -232,6 +260,10 @@ export default function TicketDrawer({
                   value={detail.csat != null ? `${detail.csat} / 5` : null}
                 />
                 <Row label="Assignee" value={detail.assignee} />
+                <Row
+                  label="Escalated"
+                  value={formatIso(detail.escalatedAtIso)}
+                />
               </dl>
             ) : (
               <div className="space-y-2 rounded-lg border border-slate-200 bg-white p-3">

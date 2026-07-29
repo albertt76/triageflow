@@ -32,6 +32,7 @@ Then open http://localhost:3000 (sign in with **Use demo credentials**).
 All filtering, sorting, and counting happen **in SQL across the whole table** — not over a client-side slice — so "At risk" reflects every matching row in the database, not just what's on screen. The row limit (200) only caps what gets rendered; the header always reports the true match count.
 
 - **Filters:** priority (severity), SLA status (breached / at risk / on track), **status** (open & in progress / new only / in progress only / escalated / resolved / all), category, **channel**, **product purchased**, and field-targeted search. They combine with AND. Channel and product option lists are read from the data, so they can't drift from it.
+- **Assignment filter:** Anyone / Assigned / Unassigned / a specific team member. Assignment is app-managed workflow state, so seeded tickets start **unassigned** rather than having owners invented for them (same reasoning as plan tier).
 - **The status filter mirrors the badges exactly** — "In progress only" returns precisely the rows showing that badge, and the five states partition the table (verified: 2,819 new + 2,882 in progress + escalated + 2,769 resolved = 8,470). Escalated is an assignee, not a lifecycle state, so it's excluded from "new"/"in progress" to match what's displayed.
 - **Search targets one field at a time** — pick **Subject**, **Customer name**, **Email**, or **ID** from the dropdown, then type a value. Text fields match on "contains" (case-insensitive); **ID** is an exact primary-key lookup and accepts `1349` or `TF-1349`. Non-numeric input in ID mode returns nothing rather than silently matching everything.
 - **SLA state is computed in SQL** from each ticket's live age (`now - created_at`) against the per-priority target in [sla.ts](src/lib/sla.ts) — the fragment in [tickets.ts](src/lib/tickets.ts) mirrors `slaStatus()` exactly (verified: SQL and JS agree exactly). Because age is derived live, the SLA clock advances between page loads.
@@ -70,11 +71,12 @@ Every feature answers a specific line from Jordan's email:
 | "I spend the first 90 minutes sorting tickets by hand" | **Auto-triage** — every ticket arrives categorized and priority-scored |
 | "A critical billing issue looked like a routine account question and sat 4 hours" | The engine reads the **body, not just the subject** — see ticket `TF-4471` ("Question about my account" → scored 100/100 Critical) |
 | "Things still slip" | **SLA countdown** per ticket with on-track / at-risk / breached flags, and a "Smart priority" sort that floats breaches to the top |
-| "I escalate to engineering / senior staff" | One-click **Escalate** on every ticket |
+| "I escalate to engineering / senior staff" | One-click **Escalate** on every ticket, tracked on its own `escalated_at` column so it stays independent of ownership |
 | "I monitor CSAT and recurring complaints" | **Insights** page: recurring-pattern alert, volume by category, CSAT trend |
 | "I log resolution notes so the team can learn" | **Resolution notes** field on every ticket; recently-resolved tickets stay in the queue (toggle "Hide resolved" off) so notes are reviewable |
 | Needing the full record on a ticket | Clicking a ticket opens a drawer showing **every stored field** — customer details, product, all timestamps, CSAT and assignee. The **customer-stated priority sits beside the engine's** in the header, flagged when they disagree |
 | Tickets arrive over chat / email / phone / social | **New Ticket** intake form captures every field the source dataset has — customer name, email, age, gender, product, purchase date, ticket type, channel, customer-stated priority, subject and description — and triages the submission the instant it's logged |
+| Distributing work across the team | **Assign** a ticket to one of the four team members (Jordan, Priya, Marcus, Dana) from the drawer. Assignment records ownership only — it never changes the ticket's status |
 | Console access | **Login screen** gates the app (demo auth, session stored in the browser) |
 
 ## How the triage engine works

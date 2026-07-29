@@ -59,4 +59,5 @@ export interface Ticket {
   createdAtIso?: string;
   firstResponseAtIso?: string | null;
   resolvedAtIso?: string | null;
+  escalatedAtIso?: string | null;
 }

@@ -17,6 +17,7 @@ CREATE TABLE `tickets` (
 	`resolved_at` integer,
 	`customer_satisfaction_rating` integer,
 	`assignee` text,
+	`escalated_at` integer,
 	`created_at` integer DEFAULT 0 NOT NULL,
 	`at_risk_at` integer DEFAULT 0 NOT NULL,
 	`breach_at` integer DEFAULT 0 NOT NULL,
@@ -32,6 +33,7 @@ CREATE INDEX `idx_tickets_status` ON `tickets` (`ticket_status`);--> statement-b
 CREATE INDEX `idx_tickets_triage_pri` ON `tickets` (`triage_priority`);--> statement-breakpoint
 CREATE INDEX `idx_tickets_channel` ON `tickets` (`ticket_channel`);--> statement-breakpoint
 CREATE INDEX `idx_tickets_product` ON `tickets` (`product_purchased`);--> statement-breakpoint
+CREATE INDEX `idx_tickets_assignee` ON `tickets` (`assignee`);--> statement-breakpoint
 CREATE INDEX `idx_tickets_type` ON `tickets` (`ticket_type`);--> statement-breakpoint
 CREATE INDEX `idx_tickets_queue_sort` ON `tickets` (`ticket_status`,"triage_score" desc,"id" desc);--> statement-breakpoint
 CREATE INDEX `idx_tickets_breach` ON `tickets` (`ticket_status`,`breach_at`);--> statement-breakpoint
