@@ -35,6 +35,11 @@ All filtering, sorting, and counting happen **in SQL across the whole table** �
 - **Stat cards are shortcuts** — click "Critical & open" or "At risk of breach" to apply that filter.
 - **Export CSV** (`/api/export`) downloads **every** matching row, not just the rendered page, honoring the active filters via the same query builder. Output is RFC-4180 quoted, UTF-8 with BOM (Excel-friendly), guarded against CSV-injection, and includes the derived `sla_state` and `triage_reasons`.
 
+> 📋 **[docs/data-decisions.md](docs/data-decisions.md)** documents every
+> cleanup decision, what was deliberately *not* cleaned, the invented fields
+> (`age_minutes`, SLA state), and baseline figures for spotting drift. Read it
+> before changing the seed script or citing a number from the app.
+
 ### Known data caveats (it's a synthetic dataset)
 
 - The source's `First Response Time` / `Time to Resolution` are **absolute timestamps, not durations**, and are internally inconsistent (resolution precedes first-response in ~49% of closed rows). We keep them raw and derive `resolution_minutes` **only** where `resolved_at > first_response_at` (~1,400 rows). Insights labels this sample size.
