@@ -8,8 +8,10 @@ import { triage } from "../src/lib/triage";
 import { synthAgeMinutes } from "../src/lib/age";
 import type { Channel } from "../src/lib/types";
 
+// The dataset ships with the repo so the project is clone-and-run. Override
+// with CSV_PATH=… to seed from a different export.
 const CSV_PATH =
-  process.env.CSV_PATH ?? "/Users/Apple/Downloads/customer_support_tickets.csv";
+  process.env.CSV_PATH ?? "./data/customer_support_tickets.csv";
 const url = process.env.DATABASE_URL ?? "file:./data/triageflow.db";
 
 if (url.startsWith("file:")) {

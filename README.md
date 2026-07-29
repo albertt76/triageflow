@@ -19,7 +19,7 @@ Then open http://localhost:3000 (sign in with **Use demo credentials**).
 
 ## Data & storage layer
 
-- **Source:** `customer_support_tickets.csv` (8,469 rows). Set a different path with `CSV_PATH=…`.
+- **Source:** [`data/customer_support_tickets.csv`](data/customer_support_tickets.csv) (8,469 rows) — committed to the repo, so `npm run db:seed` works straight after a clone. Seed from a different export with `CSV_PATH=…`.
 - **Engine:** SQLite via Drizzle ORM + `@libsql/client` (prebuilt binaries — no native build). Local file at `data/triageflow.db` (git-ignored, regenerable).
 - **Table:** one denormalized `tickets` table ([src/lib/db/schema.ts](src/lib/db/schema.ts)) storing the CSV faithfully (snake_case, enum + CSAT constraints, indexed for the queue sort and analytics) **plus four columns materialized by the triage engine at import** (`triage_priority/score/category/reasons`) so the app never recomputes.
 - **Seed pipeline** ([scripts/seed.ts](scripts/seed.ts)): normalizes enums (`Social media`→`social`, `Pending Customer Response`→`pending`), substitutes the CSV's unrendered `{product_purchased}` placeholders, parses the timestamps, and runs each row through [triage.ts](src/lib/triage.ts).
@@ -94,6 +94,9 @@ src/
     types.ts, ui.ts, format.ts
   app/actions.ts        Server actions: escalate / start / resolve / add
   app/api/export/       CSV export endpoint (respects active filters)
+data/
+  customer_support_tickets.csv   Source dataset (committed)
+  triageflow.db                  Local SQLite DB (git-ignored, regenerable)
 scripts/
   seed.ts, migrate.ts   CSV load + migrations
 ```
