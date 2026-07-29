@@ -4,6 +4,8 @@ A support-triage app built for **Jordan**, the Support Specialist at TechFlow. I
 
 Built with **Next.js (App Router) + TypeScript + Tailwind CSS**, backed by a local **SQLite database (Drizzle ORM + libSQL)** seeded from a real 8,469-row support-ticket dataset.
 
+**🔗 Live demo: [triageflow-plum.vercel.app](https://triageflow-plum.vercel.app)** — click *Use demo credentials* to sign in. Running on Vercel with the dataset in Turso; the first request may take a few seconds while the serverless function cold-starts.
+
 ## Run it
 
 ```bash
