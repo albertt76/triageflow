@@ -33,6 +33,8 @@ export interface Ticket {
    */
   body?: string;
   customerName: string;
+  /** Detail-only, like `body` — the list projection omits it. */
+  customerEmail?: string;
   planTier: PlanTier;
   channel: Channel;
   category: Category;

@@ -14,7 +14,27 @@ import {
 import { SlaMeter, SlaBadge } from "@/components/SlaMeter";
 import TicketDrawer from "@/components/TicketDrawer";
 import { PRIORITY_STYLE, CATEGORY_LABEL } from "@/lib/ui";
-import type { QueueCounts, QueueFilters, SortKey } from "@/lib/tickets";
+import type {
+  QueueCounts,
+  QueueFilters,
+  SearchField,
+  SortKey,
+} from "@/lib/tickets";
+
+const SEARCH_FIELD_OPTIONS: {
+  value: SearchField;
+  label: string;
+  placeholder: string;
+}[] = [
+  { value: "subject", label: "Subject", placeholder: "Search subject…" },
+  {
+    value: "customer",
+    label: "Customer name",
+    placeholder: "Search customer name…",
+  },
+  { value: "email", label: "Email", placeholder: "Search email…" },
+  { value: "id", label: "ID", placeholder: "e.g. 1349 or TF-1349" },
+];
 import { filtersToQuery } from "@/lib/queue-params";
 import { escalateTicket, startTicket, resolveTicket } from "@/app/actions";
 
@@ -85,6 +105,11 @@ export default function QueueView({
     const qs = filtersToQuery(filters);
     return qs ? `/api/export?${qs}` : "/api/export";
   })();
+
+  const searchField = filters.searchField ?? "subject";
+  const activeSearchOption =
+    SEARCH_FIELD_OPTIONS.find((f) => f.value === searchField) ??
+    SEARCH_FIELD_OPTIONS[0];
 
   const categoryOptions: (Category | "all")[] = [
     "all",
@@ -170,12 +195,31 @@ export default function QueueView({
       </div>
 
       <div className="mb-4 flex flex-wrap items-center gap-2">
-        <input
-          value={queryInput}
-          onChange={(e) => setQueryInput(e.target.value)}
-          placeholder="Search subject, customer, or ID…"
-          className="min-w-[200px] flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
-        />
+        {/* Search: pick a field, then type a value for just that field. */}
+        <div className="flex min-w-[280px] flex-1 rounded-md border border-slate-300 focus-within:border-slate-500 focus-within:ring-2 focus-within:ring-slate-200">
+          <select
+            value={searchField}
+            onChange={(e) =>
+              applyFilters({ searchField: e.target.value as SearchField })
+            }
+            aria-label="Field to search"
+            className="shrink-0 rounded-l-md border-r border-slate-300 bg-slate-50 px-2 py-2 text-sm text-slate-700 outline-none"
+          >
+            {SEARCH_FIELD_OPTIONS.map((f) => (
+              <option key={f.value} value={f.value}>
+                {f.label}
+              </option>
+            ))}
+          </select>
+          <input
+            value={queryInput}
+            onChange={(e) => setQueryInput(e.target.value)}
+            inputMode={searchField === "id" ? "numeric" : undefined}
+            placeholder={activeSearchOption.placeholder}
+            aria-label={`Search by ${activeSearchOption.label}`}
+            className="w-full min-w-0 rounded-r-md px-3 py-2 text-sm outline-none"
+          />
+        </div>
         <select
           value={filters.priority}
           onChange={(e) =>
@@ -248,6 +292,7 @@ export default function QueueView({
                 sla: "all",
                 category: "all",
                 query: "",
+                searchField: "subject",
               })
             }
             className="rounded-md px-2 py-2 text-sm font-medium text-slate-500 hover:text-slate-800"

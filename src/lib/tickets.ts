@@ -1,6 +1,6 @@
 import "server-only";
 import { unstable_cache } from "next/cache";
-import { and, asc, desc, eq, inArray, like, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, like, sql, type SQL } from "drizzle-orm";
 import { db } from "./db/client";
 import { tickets, type TicketRow } from "./db/schema";
 import { type SlaState } from "./sla";
@@ -107,6 +107,7 @@ export function rowToTicket(row: TicketRow): Ticket {
     subject: row.ticketSubject,
     body: row.ticketDescription,
     customerName: row.customerName,
+    customerEmail: row.customerEmail,
     planTier: "starter", // not captured in the source data
     channel: row.ticketChannel,
     category: row.triageCategory as Category,
@@ -159,11 +160,15 @@ function smartRankSql(now: number) {
 
 export type SortKey = "smart" | "sla" | "newest" | "oldest";
 
+/** Which single field the search box targets. */
+export type SearchField = "subject" | "customer" | "email" | "id";
+
 export interface QueueFilters {
   priority?: Priority | "all";
   sla?: SlaState | "all";
   category?: Category | "all";
   query?: string;
+  searchField?: SearchField;
   includeResolved?: boolean;
   sort?: SortKey;
 }
@@ -186,20 +191,34 @@ function buildWhere(f: QueueFilters, now: number): SQL | undefined {
   if (f.category && f.category !== "all") {
     clauses.push(eq(tickets.triageCategory, f.category));
   }
+  // Search targets one explicitly chosen field rather than OR-ing across
+  // several, so a query like "smith" can't match an unrelated subject line.
   const q = f.query?.trim();
   if (q) {
     const pattern = `%${q.toLowerCase()}%`;
-    const idDigits = q.replace(/^tf-?/i, "");
-    const idClause = /^\d+$/.test(idDigits)
-      ? sql`cast(${tickets.id} as text) like ${`%${idDigits}%`}`
-      : undefined;
-    clauses.push(
-      or(
-        like(sql`lower(${tickets.ticketSubject})`, pattern),
-        like(sql`lower(${tickets.customerName})`, pattern),
-        ...(idClause ? [idClause] : []),
-      )!,
-    );
+    switch (f.searchField ?? "subject") {
+      case "customer":
+        clauses.push(like(sql`lower(${tickets.customerName})`, pattern));
+        break;
+      case "email":
+        clauses.push(like(sql`lower(${tickets.customerEmail})`, pattern));
+        break;
+      case "id": {
+        // "TF-1349", "1349" and " 1349 " all mean ticket 1349 — an exact
+        // primary-key lookup. Anything non-numeric can't be an id, so match
+        // nothing rather than silently ignoring the input.
+        const digits = q.replace(/^tf[-\s]?/i, "").trim();
+        clauses.push(
+          /^\d+$/.test(digits)
+            ? eq(tickets.id, Number(digits))
+            : sql`1 = 0`,
+        );
+        break;
+      }
+      case "subject":
+      default:
+        clauses.push(like(sql`lower(${tickets.ticketSubject})`, pattern));
+    }
   }
 
   return clauses.length ? and(...clauses) : undefined;

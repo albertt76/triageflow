@@ -88,6 +88,11 @@ export default function TicketDrawer({
               </h2>
               <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-slate-500">
                 <span>{ticket.customerName}</span>
+                {detail?.customerEmail && (
+                  <span className="text-slate-400">
+                    · {detail.customerEmail}
+                  </span>
+                )}
                 <span className="capitalize">· {ticket.planTier} plan</span>
                 <ChannelTag channel={ticket.channel} />
                 <span>· {ticket.createdAtLabel}</span>

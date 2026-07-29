@@ -31,7 +31,8 @@ Then open http://localhost:3000 (sign in with **Use demo credentials**).
 
 All filtering, sorting, and counting happen **in SQL across the whole table** — not over a client-side slice — so "At risk" reflects every matching row in the database, not just what's on screen. The row limit (200) only caps what gets rendered; the header always reports the true match count.
 
-- **Filters:** priority (severity), SLA status (breached / at risk / on track), category, full-text search, and show/hide resolved. They combine with AND.
+- **Filters:** priority (severity), SLA status (breached / at risk / on track), category, field-targeted search, and show/hide resolved. They combine with AND.
+- **Search targets one field at a time** — pick **Subject**, **Customer name**, **Email**, or **ID** from the dropdown, then type a value. Text fields match on "contains" (case-insensitive); **ID** is an exact primary-key lookup and accepts `1349` or `TF-1349`. Non-numeric input in ID mode returns nothing rather than silently matching everything.
 - **SLA state is computed in SQL** from each ticket's live age (`now - created_at`) against the per-priority target in [sla.ts](src/lib/sla.ts) — the fragment in [tickets.ts](src/lib/tickets.ts) mirrors `slaStatus()` exactly (verified: SQL and JS agree exactly). Because age is derived live, the SLA clock advances between page loads.
 - **Filters live in the URL** (`/?priority=high&sla=at-risk`), so views are shareable, bookmarkable, and survive back/forward.
 - **Stat cards are shortcuts** — click "Critical & open" or "At risk of breach" to apply that filter.
