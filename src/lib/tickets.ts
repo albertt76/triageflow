@@ -1,17 +1,21 @@
 import "server-only";
+import { unstable_cache } from "next/cache";
 import { and, asc, desc, eq, inArray, like, or, sql, type SQL } from "drizzle-orm";
 import { db } from "./db/client";
 import { tickets, type TicketRow } from "./db/schema";
-import { SLA_TARGET_MINUTES, type SlaState } from "./sla";
+import { type SlaState } from "./sla";
 import type { Category, Priority, Ticket } from "./types";
 import { formatAgo } from "./format";
+
+/** Cache tag for the unfiltered headline counts; busted by the write actions. */
+export const QUEUE_COUNTS_TAG = "queue-counts";
 
 /**
  * Map a DB status + assignee to the app's richer status model.
  *   open   → new        pending → in-progress      closed → resolved
  * An assignee of "Engineering" means it was escalated.
  */
-function toAppStatus(row: TicketRow) {
+function toAppStatus(row: Pick<TicketRow, "assignee" | "ticketStatus">) {
   if (row.assignee === "Engineering") return "escalated" as const;
   switch (row.ticketStatus) {
     case "open":
@@ -24,8 +28,72 @@ function toAppStatus(row: TicketRow) {
 }
 
 /** Minutes since the ticket was created, derived live. */
-export function ageMinutesOf(row: TicketRow, now = Date.now()): number {
+export function ageMinutesOf(
+  row: Pick<TicketRow, "createdAt">,
+  now = Date.now(),
+): number {
   return Math.max(0, Math.round((now - row.createdAt) / 60_000));
+}
+
+/**
+ * Columns the queue list actually renders. Deliberately excludes the wide
+ * `ticket_description` and `resolution` text — those are only needed by the
+ * drawer and are fetched on demand by `getTicket()`. Selecting them here made
+ * the list query fetch ~2.5× the bytes and forced the sort to materialize wide
+ * rows, which is what made cold Turso reads take seconds.
+ */
+const LIST_COLUMNS = {
+  id: tickets.id,
+  ticketSubject: tickets.ticketSubject,
+  customerName: tickets.customerName,
+  ticketChannel: tickets.ticketChannel,
+  ticketStatus: tickets.ticketStatus,
+  triagePriority: tickets.triagePriority,
+  triageScore: tickets.triageScore,
+  triageCategory: tickets.triageCategory,
+  triageReasons: tickets.triageReasons,
+  createdAt: tickets.createdAt,
+  resolutionMinutes: tickets.resolutionMinutes,
+  customerSatisfactionRating: tickets.customerSatisfactionRating,
+  assignee: tickets.assignee,
+} as const;
+
+/** The subset of a ticket row needed to render a list entry. */
+type ListRow = {
+  [K in keyof typeof LIST_COLUMNS]: TicketRow[K];
+};
+
+/** Shared mapping for the fields present on both list and detail rows. */
+function baseTicketFields(row: ListRow) {
+  const resolved = row.ticketStatus === "closed";
+  // Closed tickets report how long they took; open ones how long they've waited.
+  const ageMinutes = resolved
+    ? (row.resolutionMinutes ?? 0)
+    : ageMinutesOf(row);
+  return {
+    id: `TF-${row.id}`,
+    subject: row.ticketSubject,
+    customerName: row.customerName,
+    planTier: "starter" as const,
+    channel: row.ticketChannel,
+    category: row.triageCategory as Category,
+    status: toAppStatus(row),
+    priority: row.triagePriority,
+    score: row.triageScore,
+    reasons: row.triageReasons ?? [],
+    ageMinutes,
+    createdAtLabel: resolved
+      ? `resolved in ${row.resolutionMinutes ?? "—"}m`
+      : formatAgo(ageMinutes),
+    assignee: row.assignee,
+    csat: row.customerSatisfactionRating,
+    resolutionMinutes: row.resolutionMinutes,
+  };
+}
+
+/** List entry — `body` and `resolutionNote` are absent until the drawer loads them. */
+export function listRowToTicket(row: ListRow): Ticket {
+  return baseTicketFields(row);
 }
 
 export function rowToTicket(row: TicketRow): Ticket {
@@ -60,46 +128,34 @@ export function rowToTicket(row: TicketRow): Ticket {
 // --- SQL fragments ----------------------------------------------------------
 
 /**
- * Minutes a ticket has been waiting, computed live from `created_at` against
- * the current time — so the SLA clock advances between requests.
+ * SLA state in SQL, expressed as range comparisons against the precomputed
+ * `breach_at` / `at_risk_at` columns and a bound `now` parameter.
+ *
+ * The previous form computed `strftime('%s','now') - created_at` per row, which
+ * is non-deterministic and therefore impossible to index. These are plain
+ * integer comparisons on indexed columns, and mirror `slaStatus()` in sla.ts:
+ *   breach_at  <  now                      → breached
+ *   at_risk_at <= now <= breach_at         → at risk
+ *   at_risk_at >  now                      → on track
  */
-const ageMinutesSql = sql<number>`(
-  (cast(strftime('%s','now') as integer) * 1000 - ${tickets.createdAt}) / 60000.0
-)`;
-
-/**
- * Fraction of the SLA window consumed, in SQL. Mirrors slaStatus() in sla.ts:
- *   > 1    → breached
- *   >= .75 → at risk
- *   else   → on track
- */
-const slaConsumed = sql<number>`(
-  ${ageMinutesSql} / (
-    case ${tickets.triagePriority}
-      when 'critical' then ${SLA_TARGET_MINUTES.critical}
-      when 'high'     then ${SLA_TARGET_MINUTES.high}
-      when 'medium'   then ${SLA_TARGET_MINUTES.medium}
-      else                 ${SLA_TARGET_MINUTES.low}
-    end
-  )
-)`;
-
-function slaCondition(state: SlaState): SQL {
+function slaCondition(state: SlaState, now: number): SQL {
   switch (state) {
     case "breached":
-      return sql`${slaConsumed} > 1`;
+      return sql`${tickets.breachAt} < ${now}`;
     case "at-risk":
-      return sql`${slaConsumed} >= 0.75 and ${slaConsumed} <= 1`;
+      return sql`${tickets.atRiskAt} <= ${now} and ${tickets.breachAt} >= ${now}`;
     case "on-track":
-      return sql`${slaConsumed} < 0.75`;
+      return sql`${tickets.atRiskAt} > ${now}`;
   }
 }
 
 /** Rank used by the "Smart priority" sort — triage score bumped by SLA pressure. */
-const smartRank = sql`(${tickets.triageScore} + case
-  when ${slaConsumed} > 1 then 40
-  when ${slaConsumed} >= 0.75 then 15
-  else 0 end)`;
+function smartRankSql(now: number) {
+  return sql`(${tickets.triageScore} + case
+    when ${tickets.breachAt} < ${now} then 40
+    when ${tickets.atRiskAt} <= ${now} then 15
+    else 0 end)`;
+}
 
 export type SortKey = "smart" | "sla" | "newest" | "oldest";
 
@@ -112,8 +168,8 @@ export interface QueueFilters {
   sort?: SortKey;
 }
 
-/** Build the WHERE clause shared by the queue query, the count, and the export. */
-function buildWhere(f: QueueFilters): SQL | undefined {
+/** Build the WHERE clause shared by the queue query and the export. */
+function buildWhere(f: QueueFilters, now: number): SQL | undefined {
   const clauses: SQL[] = [];
 
   // SLA state is only meaningful for unresolved tickets.
@@ -125,7 +181,7 @@ function buildWhere(f: QueueFilters): SQL | undefined {
     clauses.push(eq(tickets.triagePriority, f.priority));
   }
   if (slaActive) {
-    clauses.push(slaCondition(f.sla as SlaState));
+    clauses.push(slaCondition(f.sla as SlaState, now));
   }
   if (f.category && f.category !== "all") {
     clauses.push(eq(tickets.triageCategory, f.category));
@@ -149,17 +205,18 @@ function buildWhere(f: QueueFilters): SQL | undefined {
   return clauses.length ? and(...clauses) : undefined;
 }
 
-function orderFor(sort: SortKey = "smart") {
+function orderFor(sort: SortKey = "smart", now: number) {
   switch (sort) {
     case "sla":
-      // Closest to (or furthest past) the deadline first.
-      return [desc(slaConsumed)];
+      // Soonest (or furthest past) deadline first — an indexed range order now
+      // that the deadline is a stored column rather than a live expression.
+      return [asc(tickets.breachAt)];
     case "newest":
       return [desc(tickets.createdAt)];
     case "oldest":
       return [asc(tickets.createdAt)];
     default:
-      return [desc(smartRank)];
+      return [desc(smartRankSql(now))];
   }
 }
 
@@ -192,56 +249,75 @@ const PAGE_LIMIT = 200;
 export async function getQueueData(
   filters: QueueFilters = {},
 ): Promise<QueueData> {
-  const where = buildWhere(filters);
+  const now = Date.now();
+  const where = buildWhere(filters, now);
 
-  const rows = await db
-    .select()
+  // One round-trip: the page of rows plus the total match count, via a window
+  // function. (Previously two separate queries to Turso.)
+  const rowsPromise = db
+    .select({ ...LIST_COLUMNS, matched: sql<number>`count(*) over ()` })
     .from(tickets)
     .where(where)
-    .orderBy(...orderFor(filters.sort), desc(tickets.id))
+    .orderBy(...orderFor(filters.sort, now), desc(tickets.id))
     .limit(PAGE_LIMIT);
 
-  const [matchedRow] = await db
-    .select({ n: sql<number>`count(*)` })
-    .from(tickets)
-    .where(where);
-
-  const [agg] = await db
-    .select({
-      open: sql<number>`sum(case when ${tickets.ticketStatus} = 'open' then 1 else 0 end)`,
-      pending: sql<number>`sum(case when ${tickets.ticketStatus} = 'pending' then 1 else 0 end)`,
-      closed: sql<number>`sum(case when ${tickets.ticketStatus} = 'closed' then 1 else 0 end)`,
-      total: sql<number>`count(*)`,
-      needAttention: sql<number>`sum(case when ${tickets.ticketStatus} != 'closed' and ${tickets.triagePriority} = 'critical' then 1 else 0 end)`,
-      atRisk: sql<number>`sum(case when ${tickets.ticketStatus} != 'closed' and ${slaConsumed} >= 0.75 and ${slaConsumed} <= 1 then 1 else 0 end)`,
-    })
-    .from(tickets);
+  // The headline counts don't depend on the filters, so they're cached and
+  // don't re-run on every filter change.
+  const [rows, counts] = await Promise.all([rowsPromise, getQueueCounts()]);
 
   return {
-    tickets: rows.map(rowToTicket),
-    counts: {
+    tickets: rows.map(listRowToTicket),
+    counts,
+    matched: rows.length ? Number(rows[0].matched) : 0,
+    shown: rows.length,
+    limit: PAGE_LIMIT,
+  };
+}
+
+/**
+ * Unfiltered headline counts. Cached because they're identical for every filter
+ * combination — re-querying them on each filter change was a wasted round-trip.
+ * Write actions bust the tag, and the short TTL keeps the live SLA numbers from
+ * going stale (`atRisk` moves as the clock advances).
+ */
+export const getQueueCounts = unstable_cache(
+  async (): Promise<QueueCounts> => {
+    const now = Date.now();
+    const [agg] = await db
+      .select({
+        open: sql<number>`sum(case when ${tickets.ticketStatus} = 'open' then 1 else 0 end)`,
+        pending: sql<number>`sum(case when ${tickets.ticketStatus} = 'pending' then 1 else 0 end)`,
+        closed: sql<number>`sum(case when ${tickets.ticketStatus} = 'closed' then 1 else 0 end)`,
+        total: sql<number>`count(*)`,
+        needAttention: sql<number>`sum(case when ${tickets.ticketStatus} != 'closed' and ${tickets.triagePriority} = 'critical' then 1 else 0 end)`,
+        atRisk: sql<number>`sum(case when ${tickets.ticketStatus} != 'closed' and ${tickets.atRiskAt} <= ${now} and ${tickets.breachAt} >= ${now} then 1 else 0 end)`,
+      })
+      .from(tickets);
+
+    return {
       open: Number(agg.open),
       pending: Number(agg.pending),
       closed: Number(agg.closed),
       total: Number(agg.total),
       needAttention: Number(agg.needAttention),
       atRisk: Number(agg.atRisk),
-    },
-    matched: Number(matchedRow.n),
-    shown: rows.length,
-    limit: PAGE_LIMIT,
-  };
-}
+    };
+  },
+  ["queue-counts"],
+  { tags: [QUEUE_COUNTS_TAG], revalidate: 60 },
+);
 
 /** Every row matching the filters — used by CSV export (no display limit). */
 export async function getTicketsForExport(
   filters: QueueFilters = {},
 ): Promise<TicketRow[]> {
+  const now = Date.now();
+  // Export keeps the full projection — the CSV includes description/resolution.
   return db
     .select()
     .from(tickets)
-    .where(buildWhere(filters))
-    .orderBy(...orderFor(filters.sort), desc(tickets.id));
+    .where(buildWhere(filters, now))
+    .orderBy(...orderFor(filters.sort, now), desc(tickets.id));
 }
 
 export async function getTicket(id: number): Promise<Ticket | null> {

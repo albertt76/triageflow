@@ -11,6 +11,28 @@ export const SLA_TARGET_MINUTES: Record<Priority, number> = {
   low: 1440, // 24 hours
 };
 
+/**
+ * Fraction of the window after which a ticket is "at risk". Shared by the JS
+ * implementation below and the SQL deadline columns, so the two can't drift.
+ */
+export const SLA_AT_RISK_FRACTION = 0.75;
+
+/**
+ * When a ticket created at `createdAt` crosses each SLA boundary. Deterministic
+ * — no reference to "now" — so these can be stored as columns and compared with
+ * an indexed range scan instead of a per-row function call.
+ */
+export function slaDeadlines(
+  priority: Priority,
+  createdAt: number,
+): { atRiskAt: number; breachAt: number } {
+  const windowMs = SLA_TARGET_MINUTES[priority] * 60_000;
+  return {
+    atRiskAt: createdAt + Math.round(windowMs * SLA_AT_RISK_FRACTION),
+    breachAt: createdAt + windowMs,
+  };
+}
+
 export type SlaState = "on-track" | "at-risk" | "breached";
 
 export interface SlaStatus {

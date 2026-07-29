@@ -1,18 +1,34 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
 import { eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { tickets } from "@/lib/db/schema";
 import { triage } from "@/lib/triage";
-import { rowToTicket, parseTicketId } from "@/lib/tickets";
+import {
+  rowToTicket,
+  parseTicketId,
+  getTicket,
+  QUEUE_COUNTS_TAG,
+} from "@/lib/tickets";
+import { slaDeadlines } from "@/lib/sla";
 import type { Channel, PlanTier, Ticket } from "@/lib/types";
+
+/**
+ * Load the wide text fields the queue list deliberately skips. Called when the
+ * drawer opens — one small single-row query instead of shipping every
+ * description with the list.
+ */
+export async function fetchTicketDetail(appId: string): Promise<Ticket | null> {
+  return getTicket(parseTicketId(appId));
+}
 
 export async function escalateTicket(appId: string): Promise<void> {
   await db
     .update(tickets)
     .set({ assignee: "Engineering" })
     .where(eq(tickets.id, parseTicketId(appId)));
+  updateTag(QUEUE_COUNTS_TAG);
   revalidatePath("/");
 }
 
@@ -21,6 +37,7 @@ export async function startTicket(appId: string): Promise<void> {
     .update(tickets)
     .set({ ticketStatus: "pending" })
     .where(eq(tickets.id, parseTicketId(appId)));
+  updateTag(QUEUE_COUNTS_TAG);
   revalidatePath("/");
 }
 
@@ -47,6 +64,7 @@ export async function resolveTicket(
       resolutionMinutes,
     })
     .where(eq(tickets.id, id));
+  updateTag(QUEUE_COUNTS_TAG);
   revalidatePath("/");
 }
 
@@ -72,6 +90,8 @@ export async function addTicket(input: NewTicketInput): Promise<Ticket> {
     .select({ maxId: sql<number>`coalesce(max(${tickets.id}), 0)` })
     .from(tickets);
   const id = Number(maxId) + 1;
+  const now = Date.now();
+  const deadlines = slaDeadlines(t.priority, now);
 
   const [row] = await db
     .insert(tickets)
@@ -86,7 +106,9 @@ export async function addTicket(input: NewTicketInput): Promise<Ticket> {
       ticketStatus: "open",
       sourcePriority: t.priority,
       ticketChannel: input.channel,
-      createdAt: Date.now(), // brand new — the SLA clock starts now
+      createdAt: now, // brand new — the SLA clock starts now
+      atRiskAt: deadlines.atRiskAt,
+      breachAt: deadlines.breachAt,
       triagePriority: t.priority,
       triageScore: t.score,
       triageCategory: t.category,
@@ -94,6 +116,7 @@ export async function addTicket(input: NewTicketInput): Promise<Ticket> {
     })
     .returning();
 
+  updateTag(QUEUE_COUNTS_TAG);
   revalidatePath("/");
   return rowToTicket(row);
 }

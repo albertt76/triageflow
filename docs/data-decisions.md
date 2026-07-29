@@ -161,6 +161,22 @@ low 24 h. Then `consumed = age / target`, where age is derived live from
 | `>= 0.75` | at risk |
 | else | on track |
 
+Two derived columns, `at_risk_at` and `breach_at`, are stored at write time from
+`created_at` + the target (`slaDeadlines()` in [`sla.ts`](../src/lib/sla.ts)).
+They exist for **indexability**: the old form compared
+`strftime('%s','now') - created_at` per row, which is non-deterministic and so
+can never use an index. The stored deadlines turn every SLA filter into a plain
+range scan against a bound `now` parameter:
+
+```
+breached ⟺ breach_at  <  now
+at risk  ⟺ at_risk_at <= now AND breach_at >= now
+on track ⟺ at_risk_at >  now
+```
+
+Verified identical to the old expression and to the JS implementation
+(4,058 / 162 / 1,480 across all three).
+
 Implemented **twice** — in JS (`slaStatus()`) for rendering, and as a SQL
 fragment in [`tickets.ts`](../src/lib/tickets.ts) for whole-table filtering.
 They must stay in sync; verified equal immediately after a seed at **4,058

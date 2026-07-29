@@ -37,6 +37,16 @@ All filtering, sorting, and counting happen **in SQL across the whole table** �
 - **Stat cards are shortcuts** — click "Critical & open" or "At risk of breach" to apply that filter.
 - **Export CSV** (`/api/export`) downloads **every** matching row, not just the rendered page, honoring the active filters via the same query builder. Output is RFC-4180 quoted, UTF-8 with BOM (Excel-friendly), guarded against CSV-injection, and includes the derived `sla_state` and `triage_reasons`.
 
+### Query performance
+
+A filter change costs **one round-trip** to the database. Three things get it there:
+
+- **Narrow projection.** The list selects only the ~13 columns it renders — the wide `ticket_description` / `resolution` text is fetched on demand when the drawer opens. Cold Turso reads went from **5.7 s → 107 ms**, payload 212 KB → 88 KB.
+- **One query, not three.** The page of rows and its total match count come back together via `count(*) OVER ()`, and the headline counts (which don't depend on the filters) are cached and invalidated by the write actions.
+- **Indexable SLA predicates.** Comparing stored `at_risk_at` / `breach_at` against a bound `now` uses an index; the old `strftime('%s','now') - created_at` form could not.
+
+`vercel.json` pins the function to `iad1` so it sits alongside the Turso database in `aws-us-east-1`.
+
 > 📋 **[docs/data-decisions.md](docs/data-decisions.md)** documents every
 > cleanup decision, what was deliberately *not* cleaned, the invented fields
 > (`created_at`, SLA state), and baseline figures for spotting drift. Read it

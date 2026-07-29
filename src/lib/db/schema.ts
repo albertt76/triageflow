@@ -1,4 +1,4 @@
-import { sql } from "drizzle-orm";
+import { sql, desc } from "drizzle-orm";
 import { integer, sqliteTable, text, index, check } from "drizzle-orm/sqlite-core";
 
 /**
@@ -51,6 +51,14 @@ export const tickets = sqliteTable(
     // Ticket age is derived live as `now - created_at`, so the SLA clock ticks.
     createdAt: integer("created_at").notNull().default(0),
 
+    // Precomputed SLA boundaries (epoch ms), derived from created_at + the
+    // per-priority target in lib/sla.ts. Deterministic, so unlike the live
+    // `now - created_at` expression these can be range-scanned via an index:
+    //   breached ⟺ breach_at  < now
+    //   at risk  ⟺ at_risk_at <= now AND breach_at >= now
+    atRiskAt: integer("at_risk_at").notNull().default(0),
+    breachAt: integer("breach_at").notNull().default(0),
+
     // Materialized by the triage engine at import:
     triagePriority: text("triage_priority", {
       enum: ["low", "medium", "high", "critical"],
@@ -68,8 +76,12 @@ export const tickets = sqliteTable(
     index("idx_tickets_triage_pri").on(t.triagePriority),
     index("idx_tickets_channel").on(t.ticketChannel),
     index("idx_tickets_type").on(t.ticketType),
-    index("idx_tickets_queue_sort").on(t.ticketStatus, t.triageScore),
-    index("idx_tickets_sla").on(t.ticketStatus, t.triagePriority, t.createdAt),
+    // Default "smart priority" sort: status filter then score, descending.
+    index("idx_tickets_queue_sort").on(t.ticketStatus, desc(t.triageScore), desc(t.id)),
+    // SLA filters — range scans over the precomputed deadlines.
+    index("idx_tickets_breach").on(t.ticketStatus, t.breachAt),
+    index("idx_tickets_at_risk").on(t.ticketStatus, t.atRiskAt),
+    index("idx_tickets_created").on(t.ticketStatus, t.createdAt),
     check(
       "csat_range",
       sql`${t.customerSatisfactionRating} IS NULL OR ${t.customerSatisfactionRating} BETWEEN 1 AND 5`,

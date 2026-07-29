@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "376f538c-6a79-46dd-8f11-e1953c967112",
+  "id": "d62358d1-55ae-440a-b09d-8a4ef34e58ad",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "tickets": {
@@ -141,6 +141,22 @@
           "autoincrement": false,
           "default": 0
         },
+        "at_risk_at": {
+          "name": "at_risk_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "breach_at": {
+          "name": "breach_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
         "triage_priority": {
           "name": "triage_priority",
           "type": "text",
@@ -211,15 +227,31 @@
           "name": "idx_tickets_queue_sort",
           "columns": [
             "ticket_status",
-            "triage_score"
+            "\"triage_score\" desc",
+            "\"id\" desc"
           ],
           "isUnique": false
         },
-        "idx_tickets_sla": {
-          "name": "idx_tickets_sla",
+        "idx_tickets_breach": {
+          "name": "idx_tickets_breach",
           "columns": [
             "ticket_status",
-            "triage_priority",
+            "breach_at"
+          ],
+          "isUnique": false
+        },
+        "idx_tickets_at_risk": {
+          "name": "idx_tickets_at_risk",
+          "columns": [
+            "ticket_status",
+            "at_risk_at"
+          ],
+          "isUnique": false
+        },
+        "idx_tickets_created": {
+          "name": "idx_tickets_created",
+          "columns": [
+            "ticket_status",
             "created_at"
           ],
           "isUnique": false
@@ -244,6 +276,17 @@
     "columns": {}
   },
   "internal": {
-    "indexes": {}
+    "indexes": {
+      "idx_tickets_queue_sort": {
+        "columns": {
+          "\"triage_score\" desc": {
+            "isExpression": true
+          },
+          "\"id\" desc": {
+            "isExpression": true
+          }
+        }
+      }
+    }
   }
 }

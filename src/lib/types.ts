@@ -27,7 +27,11 @@ export interface TriageResult {
 export interface Ticket {
   id: string;
   subject: string;
-  body: string;
+  /**
+   * Full customer message. Absent on queue-list rows — the list query skips the
+   * wide text columns for speed; the drawer loads them on demand.
+   */
+  body?: string;
   customerName: string;
   planTier: PlanTier;
   channel: Channel;
@@ -44,5 +48,6 @@ export interface Ticket {
   /** Resolved tickets only. */
   csat: number | null;
   resolutionMinutes: number | null;
-  resolutionNote: string | null;
+  /** Like `body`, absent on list rows until the drawer loads the detail. */
+  resolutionNote?: string | null;
 }

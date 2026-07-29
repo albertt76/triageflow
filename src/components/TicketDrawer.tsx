@@ -12,6 +12,7 @@ import {
 } from "./Badges";
 import { SlaMeter } from "./SlaMeter";
 import { PRIORITY_STYLE } from "@/lib/ui";
+import { fetchTicketDetail } from "@/app/actions";
 
 export default function TicketDrawer({
   ticket,
@@ -29,12 +30,28 @@ export default function TicketDrawer({
   onResolve: (id: string, note: string) => void;
 }) {
   const [note, setNote] = useState("");
+  // The queue list omits the wide text columns, so load them when opened.
+  // Keyed by ticket id so switching tickets shows the loading state without a
+  // synchronous reset in the effect.
+  const [loaded, setLoaded] = useState<{ id: string; ticket: Ticket } | null>(
+    null,
+  );
+  const ticketId = ticket?.id;
+  const detail = loaded && loaded.id === ticketId ? loaded.ticket : null;
 
-  // Reset the note field when a different ticket is opened.
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setNote(ticket?.resolutionNote ?? "");
-  }, [ticket?.id, ticket?.resolutionNote]);
+    if (!ticketId) return;
+    let cancelled = false;
+    fetchTicketDetail(ticketId).then((d) => {
+      if (cancelled || !d) return;
+      // Async response from a server action — the sanctioned use of an effect.
+      setLoaded({ id: ticketId, ticket: d });
+      setNote(d.resolutionNote ?? "");
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [ticketId]);
 
   useEffect(() => {
     if (!ticket) return;
@@ -131,9 +148,17 @@ export default function TicketDrawer({
             <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
               Customer message
             </h3>
-            <p className="whitespace-pre-wrap rounded-lg border border-slate-200 bg-white p-3 text-sm leading-relaxed text-slate-700">
-              {ticket.body}
-            </p>
+            {detail ? (
+              <p className="whitespace-pre-wrap rounded-lg border border-slate-200 bg-white p-3 text-sm leading-relaxed text-slate-700">
+                {detail.body}
+              </p>
+            ) : (
+              <div className="space-y-2 rounded-lg border border-slate-200 bg-white p-3">
+                <div className="h-3 w-full animate-pulse rounded bg-slate-100" />
+                <div className="h-3 w-5/6 animate-pulse rounded bg-slate-100" />
+                <div className="h-3 w-2/3 animate-pulse rounded bg-slate-100" />
+              </div>
+            )}
           </section>
 
           <section>
@@ -142,7 +167,7 @@ export default function TicketDrawer({
             </h3>
             {ticket.status === "resolved" ? (
               <p className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">
-                {ticket.resolutionNote || "Resolved."}
+                {detail ? detail.resolutionNote || "Resolved." : "Loading…"}
               </p>
             ) : (
               <textarea

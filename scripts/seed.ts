@@ -6,6 +6,7 @@ import { migrate } from "drizzle-orm/libsql/migrator";
 import { tickets, type NewTicketRow } from "../src/lib/db/schema";
 import { triage } from "../src/lib/triage";
 import { syntheticCreatedAt } from "../src/lib/age";
+import { slaDeadlines } from "../src/lib/sla";
 import type { Channel } from "../src/lib/types";
 
 // The dataset ships with the repo so the project is clone-and-run. Override
@@ -103,6 +104,14 @@ const rows: NewTicketRow[] = records.map((r) => {
   const csatRaw = r["Customer Satisfaction Rating"];
   const id = Number(r["Ticket ID"]);
 
+  const createdAt = syntheticCreatedAt(
+    id,
+    t.priority,
+    status === "closed",
+    SEED_NOW,
+  );
+  const deadlines = slaDeadlines(t.priority, createdAt);
+
   return {
     id,
     customerName: r["Customer Name"],
@@ -130,7 +139,10 @@ const rows: NewTicketRow[] = records.map((r) => {
     resolutionMinutes,
     // Rebase onto a window ending at SEED_NOW. Age is derived live from this,
     // so the SLA clock keeps ticking after the seed run.
-    createdAt: syntheticCreatedAt(id, t.priority, status === "closed", SEED_NOW),
+    createdAt,
+    // Precomputed SLA boundaries so filters can use an index (see lib/sla.ts).
+    atRiskAt: deadlines.atRiskAt,
+    breachAt: deadlines.breachAt,
   };
 });
 
