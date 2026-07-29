@@ -101,6 +101,54 @@ scripts/
   seed.ts, migrate.ts   CSV load + migrations
 ```
 
+## Deploying
+
+**GitHub Pages will not work.** Pages serves static files only, and this app
+needs a Node server at request time: the queue and Insights pages are
+`force-dynamic` (SQL per request), escalate/resolve/new-ticket are server
+actions, and `/api/export` is an API route. `output: "export"` fails the build
+outright. Deploy to a host with a Node runtime instead.
+
+The app reads `DATABASE_URL` / `DATABASE_AUTH_TOKEN` (see [.env.example](.env.example))
+and falls back to the local SQLite file, so **no code changes are needed to
+deploy** — only environment variables.
+
+### Vercel + Turso (recommended)
+
+Vercel's filesystem is read-only and ephemeral, so the bundled `.db` file can't
+accept writes. Turso is hosted libSQL — the same driver the app already uses.
+
+```bash
+# 1. Create the database (one-time; opens a browser to sign up/in)
+brew install tursodatabase/tap/turso     # or: curl -sSfL https://get.tur.so/install.sh | bash
+turso auth login
+turso db create triageflow
+
+# 2. Grab the credentials
+turso db show triageflow --url           # -> DATABASE_URL
+turso db tokens create triageflow        # -> DATABASE_AUTH_TOKEN
+
+# 3. Create the schema and load the dataset into Turso
+DATABASE_URL="libsql://…" DATABASE_AUTH_TOKEN="…" npm run db:seed
+
+# 4. Deploy (opens a browser to sign up/in; links the GitHub repo)
+npm i -g vercel
+vercel                                   # preview deploy
+vercel env add DATABASE_URL production
+vercel env add DATABASE_AUTH_TOKEN production
+vercel --prod
+```
+
+The build itself never touches the database (every DB-backed page is
+`force-dynamic`), so a missing env var surfaces at request time, not build time.
+
+### Alternative: any Node host with a disk
+
+On Render / Railway / Fly.io you can skip Turso and keep the SQLite file, as
+long as you attach a **persistent volume** at `data/` — otherwise the database
+resets on every deploy. Build with `npm run build`, start with `npm start`, and
+run `npm run db:seed` once against the mounted volume.
+
 ## Login
 
 The app is gated by a sign-in screen. It's **demo auth** — any valid email and any
