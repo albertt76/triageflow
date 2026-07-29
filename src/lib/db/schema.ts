@@ -45,9 +45,11 @@ export const tickets = sqliteTable(
     // App-managed (not in the CSV): who the ticket is assigned/escalated to.
     assignee: text("assignee"),
 
-    // Synthesized "minutes waited" (see lib/age.ts). Stored so SQL can compute
-    // SLA state across the whole table instead of only in the client.
-    ageMinutes: integer("age_minutes").notNull().default(0),
+    // Synthesized creation time, epoch ms (see lib/age.ts). The source
+    // timestamps are unusable, so the dataset is rebased onto a window ending
+    // "now": closed tickets across the last 2 years, open ones within 30 days.
+    // Ticket age is derived live as `now - created_at`, so the SLA clock ticks.
+    createdAt: integer("created_at").notNull().default(0),
 
     // Materialized by the triage engine at import:
     triagePriority: text("triage_priority", {
@@ -67,7 +69,7 @@ export const tickets = sqliteTable(
     index("idx_tickets_channel").on(t.ticketChannel),
     index("idx_tickets_type").on(t.ticketType),
     index("idx_tickets_queue_sort").on(t.ticketStatus, t.triageScore),
-    index("idx_tickets_sla").on(t.ticketStatus, t.triagePriority, t.ageMinutes),
+    index("idx_tickets_sla").on(t.ticketStatus, t.triagePriority, t.createdAt),
     check(
       "csat_range",
       sql`${t.customerSatisfactionRating} IS NULL OR ${t.customerSatisfactionRating} BETWEEN 1 AND 5`,

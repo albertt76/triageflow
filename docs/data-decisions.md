@@ -105,33 +105,55 @@ in JS per request would defeat SQL filtering entirely.
 
 ## 4. Invented fields
 
-### `age_minutes` — synthesized wait time
-The timestamps can't act as a live clock, so open/pending tickets get a
-deterministic pseudo-age derived from the row id
-([`age.ts`](../src/lib/age.ts)):
+### `created_at` — the time-skip
+The source timestamps are unusable, so the dataset is **rebased onto a window
+ending at seed time** ([`age.ts`](../src/lib/age.ts)):
+
+| Tickets | Created |
+|---|---|
+| Closed (history) | any time in the last **2 years** |
+| Open / pending (live queue) | within the last **30 days** |
+
+Age is then derived **live** as `now - created_at`, in both JS and SQL — so the
+SLA clock actually advances between page loads rather than being frozen at seed
+time. Closed tickets show their `resolution_minutes` instead.
+
+**Open tickets are skewed toward recent, not spread uniformly.** Each priority
+has its own cap and curve:
 
 ```
-base = 8 + ((id * 137) % 1440)     // 8–1447 minutes, evenly spread
-age  = base * shrink[priority]      // critical ×0.25 … low ×1.0
+age = maxDays * 1440 * u^skew        // u ∈ [0,1), deterministic per id
+
+critical  maxDays 1   skew 4
+high      maxDays 4   skew 3.5
+medium    maxDays 14  skew 3
+low       maxDays 30  skew 2.5
 ```
 
-Closed tickets use their real `resolution_minutes` instead (falling back to 60
-where that's null).
+*Why skewed:* a real queue is mostly recent arrivals with a thin tail of
+stragglers. A uniform spread over 30 days would put nearly every ticket past
+even the 24 h low-priority target, so every row would render breached and the
+SLA states would carry no information.
 
-*Why the shrink factor:* it imitates a healthy queue where urgent tickets get
-answered sooner, so the SLA meters show a realistic mix rather than everything
-breached.
+*Why per-priority:* urgent tickets are handled or escalated quickly, so old
+ones don't accumulate in the open queue; low-priority ones do.
 
-*Why stored, not computed:* it lives in a column so SQL can filter and sort by
-SLA state across the whole table, not just rows loaded into the browser.
+*Why deterministic:* seeded per row id, so reseeding reproduces the same
+relative spread instead of reshuffling the whole queue.
 
-**This is demo data, not a real measurement.** Any "how long do tickets wait"
-claim is about synthesized values.
+> **Reseeding re-anchors the window.** `created_at` is fixed at seed time and
+> age grows from there, so a database left untouched for weeks will drift
+> toward everything-breached. Re-run `npm run db:seed` to rebase onto a fresh
+> "now".
+
+**This is synthesized data, not measurement.** Any "how long do tickets wait"
+claim describes the generated distribution above.
 
 ### SLA state — derived, in two places
 Targets are first-response times per priority
 ([`sla.ts`](../src/lib/sla.ts)): critical 30 min, high 2 h, medium 8 h,
-low 24 h. Then `consumed = age_minutes / target`:
+low 24 h. Then `consumed = age / target`, where age is derived live from
+`created_at`:
 
 | Consumed | State |
 |---|---|
@@ -141,9 +163,14 @@ low 24 h. Then `consumed = age_minutes / target`:
 
 Implemented **twice** — in JS (`slaStatus()`) for rendering, and as a SQL
 fragment in [`tickets.ts`](../src/lib/tickets.ts) for whole-table filtering.
-They must stay in sync; verified equal at **2,513 breached / 797 at-risk /
-2,390 on-track**. If you change a threshold or target, change both and re-check
-those counts.
+They must stay in sync; verified equal immediately after a seed at **4,058
+breached / 162 at-risk / 1,480 on-track**. If you change a threshold or target,
+change both and re-check.
+
+Because age is now live, **these counts drift upward into "breached" as time
+passes** — they are a snapshot at seed time, not fixed properties of the data.
+The at-risk band is narrow by construction (75–100 % of target), so it will
+always hold a small slice of the queue at any given instant.
 
 Notes: the clock measures **first response**, not resolution, and the priority
 used is the *engine's*, not the CSV's. Thresholds and targets are hardcoded
@@ -161,7 +188,9 @@ Baseline after a clean `npm run db:seed` — useful for spotting drift:
 | open / pending / closed | 2,819 / 2,881 / 2,769 |
 | Rows with usable duration | 1,402 |
 | Rows with CSAT | 2,769 |
-| SLA breached / at-risk / on-track | 2,513 / 797 / 2,390 |
+| SLA breached / at-risk / on-track *(at seed time; drifts)* | 4,058 / 162 / 1,480 |
+| Open-ticket age range | 0 – 30 days (avg ≈ 4.7 d) |
+| Closed-ticket age range | 1 – 730 days |
 | Residual `{...product_purchased...}` tokens | 7 |
 | Distinct products / subjects / types | 42 / 16 / 5 |
 | Emails appearing more than once | 139 |

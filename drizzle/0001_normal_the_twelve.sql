@@ -1,1 +1,0 @@
-ALTER TABLE `tickets` ADD `assignee` text;

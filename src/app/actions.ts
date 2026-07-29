@@ -32,10 +32,10 @@ export async function resolveTicket(
   const id = parseTicketId(appId);
   const [row] = await db.select().from(tickets).where(eq(tickets.id, id));
   const now = Date.now();
-  const resolutionMinutes =
-    row?.firstResponseAt != null
-      ? Math.max(1, Math.round((now - row.firstResponseAt) / 60000))
-      : null;
+  // How long the ticket actually took, measured from when it was created.
+  const resolutionMinutes = row
+    ? Math.max(1, Math.round((now - row.createdAt) / 60000))
+    : null;
 
   await db
     .update(tickets)
@@ -45,7 +45,6 @@ export async function resolveTicket(
       resolvedAt: now,
       customerSatisfactionRating: csat ?? null,
       resolutionMinutes,
-      ...(resolutionMinutes != null ? { ageMinutes: resolutionMinutes } : {}),
     })
     .where(eq(tickets.id, id));
   revalidatePath("/");
@@ -87,7 +86,7 @@ export async function addTicket(input: NewTicketInput): Promise<Ticket> {
       ticketStatus: "open",
       sourcePriority: t.priority,
       ticketChannel: input.channel,
-      ageMinutes: 0, // brand new — the SLA clock starts now
+      createdAt: Date.now(), // brand new — the SLA clock starts now
       triagePriority: t.priority,
       triageScore: t.score,
       triageCategory: t.category,

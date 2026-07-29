@@ -29,23 +29,23 @@ Then open http://localhost:3000 (sign in with **Use demo credentials**).
 
 ## Filtering, sorting & export
 
-All filtering, sorting, and counting happen **in SQL across the whole table** — not over a client-side slice — so "At risk" reflects every matching row in the database (797, not just what's on screen). The row limit (200) only caps what gets rendered; the header always reports the true match count.
+All filtering, sorting, and counting happen **in SQL across the whole table** — not over a client-side slice — so "At risk" reflects every matching row in the database, not just what's on screen. The row limit (200) only caps what gets rendered; the header always reports the true match count.
 
 - **Filters:** priority (severity), SLA status (breached / at risk / on track), category, full-text search, and show/hide resolved. They combine with AND.
-- **SLA state is computed in SQL** from `age_minutes` against the per-priority target in [sla.ts](src/lib/sla.ts) — the fragment in [tickets.ts](src/lib/tickets.ts) mirrors `slaStatus()` exactly (verified: SQL and JS agree on 2,513 breached / 797 at-risk / 2,390 on-track).
+- **SLA state is computed in SQL** from each ticket's live age (`now - created_at`) against the per-priority target in [sla.ts](src/lib/sla.ts) — the fragment in [tickets.ts](src/lib/tickets.ts) mirrors `slaStatus()` exactly (verified: SQL and JS agree exactly). Because age is derived live, the SLA clock advances between page loads.
 - **Filters live in the URL** (`/?priority=high&sla=at-risk`), so views are shareable, bookmarkable, and survive back/forward.
 - **Stat cards are shortcuts** — click "Critical & open" or "At risk of breach" to apply that filter.
 - **Export CSV** (`/api/export`) downloads **every** matching row, not just the rendered page, honoring the active filters via the same query builder. Output is RFC-4180 quoted, UTF-8 with BOM (Excel-friendly), guarded against CSV-injection, and includes the derived `sla_state` and `triage_reasons`.
 
 > 📋 **[docs/data-decisions.md](docs/data-decisions.md)** documents every
 > cleanup decision, what was deliberately *not* cleaned, the invented fields
-> (`age_minutes`, SLA state), and baseline figures for spotting drift. Read it
+> (`created_at`, SLA state), and baseline figures for spotting drift. Read it
 > before changing the seed script or citing a number from the app.
 
 ### Known data caveats (it's a synthetic dataset)
 
 - The source's `First Response Time` / `Time to Resolution` are **absolute timestamps, not durations**, and are internally inconsistent (resolution precedes first-response in ~49% of closed rows). We keep them raw and derive `resolution_minutes` **only** where `resolved_at > first_response_at` (~1,400 rows). Insights labels this sample size.
-- Live "age"/SLA for open tickets is **synthesized deterministically from the id** (the real timestamps are unusable as a clock) so the SLA meters still demo sensibly.
+- The dataset is **time-skipped onto a window ending at seed time**: closed tickets spread across the last 2 years, open ones created within the last 30 days (skewed toward recent, so the queue isn't uniformly breached). The source timestamps are unusable as a clock, so `created_at` is synthesized — see [docs/data-decisions.md](docs/data-decisions.md). Re-run `npm run db:seed` to rebase onto a fresh "now".
 - `planTier` isn't in the CSV → imported tickets default to `starter` (one lever in the seed script).
 - A handful (~7) of malformed brace tokens in descriptions can't be cleanly substituted and are left as-is.
 
@@ -95,7 +95,7 @@ src/
     db/client.ts        Server-only Drizzle/libSQL client
     tickets.ts          Queue queries, SQL filters/SLA, export (server-only)
     queue-params.ts     URL search-param ↔ filter parsing
-    age.ts              Deterministic synthesized ticket age
+    age.ts              Synthetic created_at (time-skip model)
     insights.ts         Insights SQL aggregations (server-only)
     auth.tsx            Demo auth context (localStorage-backed)
     types.ts, ui.ts, format.ts

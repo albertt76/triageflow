@@ -5,7 +5,7 @@ import { drizzle } from "drizzle-orm/libsql";
 import { migrate } from "drizzle-orm/libsql/migrator";
 import { tickets, type NewTicketRow } from "../src/lib/db/schema";
 import { triage } from "../src/lib/triage";
-import { synthAgeMinutes } from "../src/lib/age";
+import { syntheticCreatedAt } from "../src/lib/age";
 import type { Channel } from "../src/lib/types";
 
 // The dataset ships with the repo so the project is clone-and-run. Override
@@ -64,6 +64,10 @@ const records: Record<string, string>[] = parse(raw, {
 });
 
 console.log(`Parsed ${records.length} rows from ${CSV_PATH}`);
+
+// Single anchor instant for the whole run, so every row is rebased against the
+// same "now" rather than drifting across the loop.
+const SEED_NOW = Date.now();
 
 const rows: NewTicketRow[] = records.map((r) => {
   const product = r["Product Purchased"];
@@ -124,12 +128,9 @@ const rows: NewTicketRow[] = records.map((r) => {
     triageCategory: t.category,
     triageReasons: t.reasons,
     resolutionMinutes,
-    // Closed tickets report their real duration; open ones get the synthesized
-    // wait time that drives the SLA meters.
-    ageMinutes:
-      status === "closed"
-        ? (resolutionMinutes ?? 60)
-        : synthAgeMinutes(id, t.priority),
+    // Rebase onto a window ending at SEED_NOW. Age is derived live from this,
+    // so the SLA clock keeps ticking after the seed run.
+    createdAt: syntheticCreatedAt(id, t.priority, status === "closed", SEED_NOW),
   };
 });
 

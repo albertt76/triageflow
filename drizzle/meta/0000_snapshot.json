@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "5f76e0b3-753a-4ddd-9453-276d17b2d324",
+  "id": "376f538c-6a79-46dd-8f11-e1953c967112",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "tickets": {
@@ -126,6 +126,21 @@
           "notNull": false,
           "autoincrement": false
         },
+        "assignee": {
+          "name": "assignee",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
         "triage_priority": {
           "name": "triage_priority",
           "type": "text",
@@ -197,6 +212,15 @@
           "columns": [
             "ticket_status",
             "triage_score"
+          ],
+          "isUnique": false
+        },
+        "idx_tickets_sla": {
+          "name": "idx_tickets_sla",
+          "columns": [
+            "ticket_status",
+            "triage_priority",
+            "created_at"
           ],
           "isUnique": false
         }

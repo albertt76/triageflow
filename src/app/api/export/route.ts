@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { getTicketsForExport } from "@/lib/tickets";
+import { getTicketsForExport, ageMinutesOf } from "@/lib/tickets";
 import { parseQueueFilters } from "@/lib/queue-params";
 import { slaStatus } from "@/lib/sla";
 
@@ -19,6 +19,7 @@ const COLUMNS = [
   "triage_category",
   "triage_reasons",
   "sla_state",
+  "created_at",
   "age_minutes",
   "resolution_minutes",
   "csat",
@@ -40,12 +41,16 @@ export async function GET(request: NextRequest) {
   const filters = parseQueueFilters(params);
   const rows = await getTicketsForExport(filters);
 
+  const now = Date.now();
   const lines = [COLUMNS.join(",")];
   for (const r of rows) {
     const resolved = r.ticketStatus === "closed";
+    const ageMinutes = resolved
+      ? (r.resolutionMinutes ?? 0)
+      : ageMinutesOf(r, now);
     const sla = resolved
       ? ""
-      : slaStatus(r.triagePriority, r.ageMinutes).state;
+      : slaStatus(r.triagePriority, ageMinutes).state;
     lines.push(
       [
         r.id,
@@ -61,7 +66,8 @@ export async function GET(request: NextRequest) {
         r.triageCategory,
         (r.triageReasons ?? []).join("; "),
         sla,
-        r.ageMinutes,
+        new Date(r.createdAt).toISOString(),
+        ageMinutes,
         r.resolutionMinutes,
         r.customerSatisfactionRating,
         r.assignee,

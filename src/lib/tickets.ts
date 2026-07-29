@@ -23,8 +23,17 @@ function toAppStatus(row: TicketRow) {
   }
 }
 
+/** Minutes since the ticket was created, derived live. */
+export function ageMinutesOf(row: TicketRow, now = Date.now()): number {
+  return Math.max(0, Math.round((now - row.createdAt) / 60_000));
+}
+
 export function rowToTicket(row: TicketRow): Ticket {
   const resolved = row.ticketStatus === "closed";
+  // Closed tickets report how long they took; open ones how long they've waited.
+  const ageMinutes = resolved
+    ? (row.resolutionMinutes ?? 0)
+    : ageMinutesOf(row);
   return {
     id: `TF-${row.id}`,
     subject: row.ticketSubject,
@@ -37,10 +46,10 @@ export function rowToTicket(row: TicketRow): Ticket {
     priority: row.triagePriority,
     score: row.triageScore,
     reasons: row.triageReasons ?? [],
-    ageMinutes: row.ageMinutes,
+    ageMinutes,
     createdAtLabel: resolved
       ? `resolved in ${row.resolutionMinutes ?? "—"}m`
-      : formatAgo(row.ageMinutes),
+      : formatAgo(ageMinutes),
     assignee: row.assignee,
     csat: row.customerSatisfactionRating,
     resolutionMinutes: row.resolutionMinutes,
@@ -51,13 +60,21 @@ export function rowToTicket(row: TicketRow): Ticket {
 // --- SQL fragments ----------------------------------------------------------
 
 /**
+ * Minutes a ticket has been waiting, computed live from `created_at` against
+ * the current time — so the SLA clock advances between requests.
+ */
+const ageMinutesSql = sql<number>`(
+  (cast(strftime('%s','now') as integer) * 1000 - ${tickets.createdAt}) / 60000.0
+)`;
+
+/**
  * Fraction of the SLA window consumed, in SQL. Mirrors slaStatus() in sla.ts:
- *   >= 1   → breached
+ *   > 1    → breached
  *   >= .75 → at risk
  *   else   → on track
  */
 const slaConsumed = sql<number>`(
-  cast(${tickets.ageMinutes} as real) / (
+  ${ageMinutesSql} / (
     case ${tickets.triagePriority}
       when 'critical' then ${SLA_TARGET_MINUTES.critical}
       when 'high'     then ${SLA_TARGET_MINUTES.high}
@@ -138,9 +155,9 @@ function orderFor(sort: SortKey = "smart") {
       // Closest to (or furthest past) the deadline first.
       return [desc(slaConsumed)];
     case "newest":
-      return [asc(tickets.ageMinutes)];
+      return [desc(tickets.createdAt)];
     case "oldest":
-      return [desc(tickets.ageMinutes)];
+      return [asc(tickets.createdAt)];
     default:
       return [desc(smartRank)];
   }
