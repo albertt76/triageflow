@@ -19,9 +19,19 @@ import type {
   QueueFilters,
   SearchField,
   SortKey,
+  StatusFilter,
 } from "@/lib/tickets";
 
 const CHANNEL_OPTIONS: Channel[] = ["email", "phone", "chat", "social"];
+
+const STATUS_OPTIONS: { value: StatusFilter; label: string }[] = [
+  { value: "unresolved", label: "Open & in progress" },
+  { value: "new", label: "New only" },
+  { value: "in-progress", label: "In progress only" },
+  { value: "escalated", label: "Escalated" },
+  { value: "resolved", label: "Resolved" },
+  { value: "all", label: "All statuses" },
+];
 
 const SEARCH_FIELD_OPTIONS: {
   value: SearchField;
@@ -105,6 +115,7 @@ export default function QueueView({
     filters.category !== "all" ||
     filters.channel !== "all" ||
     filters.product !== "all" ||
+    filters.status !== "unresolved" ||
     Boolean(filters.query?.trim());
 
   const exportHref = (() => {
@@ -176,7 +187,7 @@ export default function QueueView({
             applyFilters({
               priority: "critical",
               sla: "all",
-              includeResolved: false,
+              status: "unresolved",
             })
           }
         />
@@ -189,7 +200,7 @@ export default function QueueView({
             applyFilters({
               sla: "at-risk",
               priority: "all",
-              includeResolved: false,
+              status: "unresolved",
             })
           }
         />
@@ -307,17 +318,20 @@ export default function QueueView({
           <option value="newest">Newest first</option>
           <option value="oldest">Oldest first</option>
         </select>
-        <label className="flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-600">
-          <input
-            type="checkbox"
-            checked={!filters.includeResolved}
-            onChange={(e) =>
-              applyFilters({ includeResolved: !e.target.checked })
-            }
-            className="accent-slate-800"
-          />
-          Hide resolved
-        </label>
+        <select
+          value={filters.status}
+          onChange={(e) =>
+            applyFilters({ status: e.target.value as StatusFilter })
+          }
+          aria-label="Filter by status"
+          className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-500"
+        >
+          {STATUS_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
         {filtersActive && (
           <button
             onClick={() =>
@@ -329,6 +343,7 @@ export default function QueueView({
                 product: "all",
                 query: "",
                 searchField: "subject",
+                status: "unresolved",
               })
             }
             className="rounded-md px-2 py-2 text-sm font-medium text-slate-500 hover:text-slate-800"

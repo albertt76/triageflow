@@ -182,18 +182,55 @@ export interface QueueFilters {
   product?: string | "all";
   query?: string;
   searchField?: SearchField;
-  includeResolved?: boolean;
+  /**
+   * Which lifecycle stage to show. Mirrors the badges the list renders, so
+   * "In progress" returns exactly the rows displaying that badge.
+   *   unresolved (default) = new + in progress + escalated
+   */
+  status?: StatusFilter;
   sort?: SortKey;
 }
+
+export type StatusFilter =
+  | "unresolved"
+  | "new"
+  | "in-progress"
+  | "escalated"
+  | "resolved"
+  | "all";
 
 /** Build the WHERE clause shared by the queue query and the export. */
 function buildWhere(f: QueueFilters, now: number): SQL | undefined {
   const clauses: SQL[] = [];
 
-  // SLA state is only meaningful for unresolved tickets.
+  // SLA state is only meaningful for unresolved tickets, so an SLA filter
+  // implies them regardless of the chosen status.
   const slaActive = f.sla && f.sla !== "all";
-  if (!f.includeResolved || slaActive) {
-    clauses.push(inArray(tickets.ticketStatus, ["open", "pending"]));
+  const notEscalated = sql`(${tickets.assignee} is null or ${tickets.assignee} != 'Engineering')`;
+  switch (f.status ?? "unresolved") {
+    case "new":
+      clauses.push(eq(tickets.ticketStatus, "open"), notEscalated);
+      break;
+    case "in-progress":
+      clauses.push(eq(tickets.ticketStatus, "pending"), notEscalated);
+      break;
+    case "escalated":
+      clauses.push(
+        eq(tickets.assignee, "Engineering"),
+        inArray(tickets.ticketStatus, ["open", "pending"]),
+      );
+      break;
+    case "resolved":
+      clauses.push(eq(tickets.ticketStatus, "closed"));
+      break;
+    case "all":
+      if (slaActive) {
+        clauses.push(inArray(tickets.ticketStatus, ["open", "pending"]));
+      }
+      break;
+    case "unresolved":
+    default:
+      clauses.push(inArray(tickets.ticketStatus, ["open", "pending"]));
   }
   if (f.priority && f.priority !== "all") {
     clauses.push(eq(tickets.triagePriority, f.priority));

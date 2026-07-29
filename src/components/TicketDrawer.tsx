@@ -100,7 +100,7 @@ export default function TicketDrawer({
               ✕
             </button>
           </div>
-          <div className="mt-3 flex items-center gap-2">
+          <div className="mt-3 flex flex-wrap items-center gap-2">
             <PriorityBadge priority={ticket.priority} />
             <CategoryBadge category={ticket.category} />
             {ticket.assignee && (
@@ -109,6 +109,32 @@ export default function TicketDrawer({
               </span>
             )}
           </div>
+          {/* The customer's own read, next to the engine's, so a mismatch is
+              visible without scrolling to the details grid. */}
+          {detail?.sourcePriority && (
+            <div className="mt-2 text-xs">
+              {detail.sourcePriority === ticket.priority ? (
+                <span className="text-slate-500">
+                  Customer also called this{" "}
+                  <span className="font-medium capitalize text-slate-700">
+                    {detail.sourcePriority}
+                  </span>
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 rounded-md bg-amber-50 px-2 py-1 text-amber-800">
+                  <span aria-hidden>⚠</span>
+                  Customer called this{" "}
+                  <span className="font-semibold capitalize">
+                    {detail.sourcePriority}
+                  </span>{" "}
+                  · engine scored it{" "}
+                  <span className="font-semibold capitalize">
+                    {ticket.priority}
+                  </span>
+                </span>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="flex-1 space-y-5 overflow-y-auto px-5 py-4">

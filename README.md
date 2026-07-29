@@ -31,7 +31,8 @@ Then open http://localhost:3000 (sign in with **Use demo credentials**).
 
 All filtering, sorting, and counting happen **in SQL across the whole table** — not over a client-side slice — so "At risk" reflects every matching row in the database, not just what's on screen. The row limit (200) only caps what gets rendered; the header always reports the true match count.
 
-- **Filters:** priority (severity), SLA status (breached / at risk / on track), category, **channel**, **product purchased**, field-targeted search, and show/hide resolved. They combine with AND. Channel and product option lists are read from the data, so they can't drift from it.
+- **Filters:** priority (severity), SLA status (breached / at risk / on track), **status** (open & in progress / new only / in progress only / escalated / resolved / all), category, **channel**, **product purchased**, and field-targeted search. They combine with AND. Channel and product option lists are read from the data, so they can't drift from it.
+- **The status filter mirrors the badges exactly** — "In progress only" returns precisely the rows showing that badge, and the five states partition the table (verified: 2,819 new + 2,882 in progress + escalated + 2,769 resolved = 8,470). Escalated is an assignee, not a lifecycle state, so it's excluded from "new"/"in progress" to match what's displayed.
 - **Search targets one field at a time** — pick **Subject**, **Customer name**, **Email**, or **ID** from the dropdown, then type a value. Text fields match on "contains" (case-insensitive); **ID** is an exact primary-key lookup and accepts `1349` or `TF-1349`. Non-numeric input in ID mode returns nothing rather than silently matching everything.
 - **SLA state is computed in SQL** from each ticket's live age (`now - created_at`) against the per-priority target in [sla.ts](src/lib/sla.ts) — the fragment in [tickets.ts](src/lib/tickets.ts) mirrors `slaStatus()` exactly (verified: SQL and JS agree exactly). Because age is derived live, the SLA clock advances between page loads.
 - **Filters live in the URL** (`/?priority=high&sla=at-risk`), so views are shareable, bookmarkable, and survive back/forward.
@@ -72,7 +73,7 @@ Every feature answers a specific line from Jordan's email:
 | "I escalate to engineering / senior staff" | One-click **Escalate** on every ticket |
 | "I monitor CSAT and recurring complaints" | **Insights** page: recurring-pattern alert, volume by category, CSAT trend |
 | "I log resolution notes so the team can learn" | **Resolution notes** field on every ticket; recently-resolved tickets stay in the queue (toggle "Hide resolved" off) so notes are reviewable |
-| Needing the full record on a ticket | Clicking a ticket opens a drawer showing **every stored field** — customer details, product, both priorities (customer-stated vs engine), all timestamps, CSAT and assignee |
+| Needing the full record on a ticket | Clicking a ticket opens a drawer showing **every stored field** — customer details, product, all timestamps, CSAT and assignee. The **customer-stated priority sits beside the engine's** in the header, flagged when they disagree |
 | Tickets arrive over chat / email / phone / social | **New Ticket** intake form captures every field the source dataset has — customer name, email, age, gender, product, purchase date, ticket type, channel, customer-stated priority, subject and description — and triages the submission the instant it's logged |
 | Console access | **Login screen** gates the app (demo auth, session stored in the browser) |
 

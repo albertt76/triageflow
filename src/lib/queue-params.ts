@@ -1,4 +1,9 @@
-import type { QueueFilters, SearchField, SortKey } from "./tickets";
+import type {
+  QueueFilters,
+  SearchField,
+  SortKey,
+  StatusFilter,
+} from "./tickets";
 import type { SlaState } from "./sla";
 import type { Category, Channel, Priority } from "./types";
 
@@ -13,6 +18,15 @@ const CATEGORIES: Category[] = [
   "feature-request",
 ];
 const CHANNELS: Channel[] = ["email", "phone", "chat", "social"];
+const STATUSES: StatusFilter[] = [
+  "unresolved",
+  "new",
+  "in-progress",
+  "escalated",
+  "resolved",
+  "all",
+];
+export const DEFAULT_STATUS: StatusFilter = "unresolved";
 const SORTS: SortKey[] = ["smart", "sla", "newest", "oldest"];
 const SEARCH_FIELDS: SearchField[] = ["subject", "customer", "email", "id"];
 export const DEFAULT_SEARCH_FIELD: SearchField = "subject";
@@ -48,7 +62,13 @@ export function parseQueueFilters(
         ? (raw as SearchField)
         : DEFAULT_SEARCH_FIELD;
     })(),
-    includeResolved: get("resolved") === "1",
+    status: (() => {
+      const raw = get("status");
+      if (raw && (STATUSES as string[]).includes(raw))
+        return raw as StatusFilter;
+      // Legacy links used ?resolved=1 to mean "include closed tickets".
+      return get("resolved") === "1" ? "all" : DEFAULT_STATUS;
+    })(),
     sort:
       sortRaw && (SORTS as string[]).includes(sortRaw)
         ? (sortRaw as SortKey)
@@ -70,7 +90,7 @@ export function filtersToQuery(f: QueueFilters): string {
   if (f.searchField && f.searchField !== DEFAULT_SEARCH_FIELD) {
     p.set("field", f.searchField);
   }
-  if (f.includeResolved) p.set("resolved", "1");
+  if (f.status && f.status !== DEFAULT_STATUS) p.set("status", f.status);
   if (f.sort && f.sort !== "smart") p.set("sort", f.sort);
   return p.toString();
 }

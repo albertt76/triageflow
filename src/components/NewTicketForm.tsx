@@ -30,10 +30,12 @@ export default function NewTicketForm({
   const [customerAge, setCustomerAge] = useState("");
   const [customerGender, setCustomerGender] = useState<Gender | "">("");
   // Product
-  const [productPurchased, setProductPurchased] = useState(products[0] ?? "");
+  // Deliberately empty so the agent has to choose — defaulting to the first
+  // option makes it easy to submit the wrong product without noticing.
+  const [productPurchased, setProductPurchased] = useState("");
   const [dateOfPurchase, setDateOfPurchase] = useState("");
   // Ticket
-  const [ticketType, setTicketType] = useState(ticketTypes[0] ?? "");
+  const [ticketType, setTicketType] = useState("");
   const [channel, setChannel] = useState<Channel>("chat");
   const [sourcePriority, setSourcePriority] = useState<Priority>("medium");
   const [subject, setSubject] = useState("");
@@ -55,9 +57,17 @@ export default function NewTicketForm({
     e.preventDefault();
     if (!canSubmit) {
       setError(
-        !emailValid
-          ? "Enter a valid customer email."
-          : "Fill in every required field.",
+        !customerName.trim()
+          ? "Enter the customer's name."
+          : !emailValid
+            ? "Enter a valid customer email."
+            : !productPurchased
+              ? "Select which product this is about."
+              : !ticketType
+                ? "Select a ticket type."
+                : !subject.trim()
+                  ? "Enter a subject."
+                  : "Enter the customer's message.",
       );
       return;
     }
@@ -87,9 +97,9 @@ export default function NewTicketForm({
     setCustomerEmail("");
     setCustomerAge("");
     setCustomerGender("");
-    setProductPurchased(products[0] ?? "");
+    setProductPurchased("");
     setDateOfPurchase("");
-    setTicketType(ticketTypes[0] ?? "");
+    setTicketType("");
     setChannel("chat");
     setSourcePriority("medium");
     setSubject("");
@@ -169,10 +179,11 @@ export default function NewTicketForm({
               <select
                 value={productPurchased}
                 onChange={(e) => setProductPurchased(e.target.value)}
-                className="input"
+                className={`input ${productPurchased ? "" : "text-slate-400"}`}
               >
+                <option value="">Select a product…</option>
                 {products.map((p) => (
-                  <option key={p} value={p}>
+                  <option key={p} value={p} className="text-slate-900">
                     {p}
                   </option>
                 ))}
@@ -195,10 +206,11 @@ export default function NewTicketForm({
               <select
                 value={ticketType}
                 onChange={(e) => setTicketType(e.target.value)}
-                className="input"
+                className={`input ${ticketType ? "" : "text-slate-400"}`}
               >
+                <option value="">Select a type…</option>
                 {ticketTypes.map((t) => (
-                  <option key={t} value={t}>
+                  <option key={t} value={t} className="text-slate-900">
                     {t}
                   </option>
                 ))}
