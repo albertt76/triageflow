@@ -39,3 +39,10 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Local SQLite database (regenerate with npm run db:seed)
+/data/*.db
+/data/*.db-*
+
+# Machine-local editor/agent settings
+.claude/settings.local.json
