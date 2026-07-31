@@ -24,6 +24,19 @@ import type {
 
 const CHANNEL_OPTIONS: Channel[] = ["email", "phone", "chat", "social"];
 
+/**
+ * Secondary filters that live behind the "＋ Filter" menu rather than sitting in
+ * the bar. These are the investigative ones (drill into a category / channel /
+ * product) that aren't part of the every-session triage loop.
+ */
+type ExtraKey = "category" | "channel" | "product";
+const EXTRA_KEYS: ExtraKey[] = ["category", "channel", "product"];
+const EXTRA_LABEL: Record<ExtraKey, string> = {
+  category: "Category",
+  channel: "Channel",
+  product: "Product",
+};
+
 const STATUS_OPTIONS: { value: StatusFilter; label: string }[] = [
   { value: "unresolved", label: "Open & in progress" },
   { value: "new", label: "New only" },
@@ -79,6 +92,10 @@ export default function QueueView({
   // Local mirror of the search box so typing stays responsive; committed to the
   // URL (and therefore the SQL query) after a short debounce.
   const [queryInput, setQueryInput] = useState(filters.query ?? "");
+  // "＋ Filter" state: which extra filters the user has revealed but not yet set
+  // a value for, and whether the add menu is open.
+  const [revealed, setRevealed] = useState<Set<ExtraKey>>(new Set());
+  const [addOpen, setAddOpen] = useState(false);
 
   const openTotal = counts.open + counts.pending;
 
@@ -158,6 +175,102 @@ export default function QueueView({
     { value: "on-track", label: "On track" },
   ];
 
+  // An extra filter is "active" once it has a real value; a chip is shown when
+  // it's active OR the user just revealed it from the ＋ Filter menu.
+  const isExtraActive = (k: ExtraKey) => (filters[k] ?? "all") !== "all";
+  const shownExtras = EXTRA_KEYS.filter(
+    (k) => isExtraActive(k) || revealed.has(k),
+  );
+  const addableExtras = EXTRA_KEYS.filter((k) => !shownExtras.includes(k));
+  const activeExtraCount = EXTRA_KEYS.filter(isExtraActive).length;
+
+  const addExtra = (k: ExtraKey) => {
+    setRevealed((prev) => new Set(prev).add(k));
+    setAddOpen(false);
+  };
+  const removeExtra = (k: ExtraKey) => {
+    setRevealed((prev) => {
+      const next = new Set(prev);
+      next.delete(k);
+      return next;
+    });
+    applyFilters({ [k]: "all" });
+  };
+
+  const clearAllFilters = () => {
+    setRevealed(new Set());
+    applyFilters({
+      priority: "all",
+      sla: "all",
+      category: "all",
+      channel: "all",
+      product: "all",
+      query: "",
+      searchField: "subject",
+      status: "unresolved",
+      assignment: "all",
+    });
+  };
+
+  /** The value dropdown for one extra filter, rendered inside its chip. */
+  const extraSelect = (k: ExtraKey) => {
+    const cls =
+      "border-0 bg-transparent py-0.5 pr-6 text-sm text-slate-800 outline-none focus:ring-0";
+    if (k === "category")
+      return (
+        <select
+          value={filters.category}
+          onChange={(e) =>
+            applyFilters({ category: e.target.value as Category | "all" })
+          }
+          aria-label="Filter by category"
+          className={cls}
+        >
+          <option value="all">Any category</option>
+          {categoryOptions
+            .filter((c) => c !== "all")
+            .map((c) => (
+              <option key={c} value={c}>
+                {CATEGORY_LABEL[c as Category]}
+              </option>
+            ))}
+        </select>
+      );
+    if (k === "channel")
+      return (
+        <select
+          value={filters.channel}
+          onChange={(e) =>
+            applyFilters({ channel: e.target.value as Channel | "all" })
+          }
+          aria-label="Filter by channel"
+          className={`${cls} capitalize`}
+        >
+          <option value="all">Any channel</option>
+          {CHANNEL_OPTIONS.map((c) => (
+            <option key={c} value={c} className="capitalize">
+              {c}
+            </option>
+          ))}
+        </select>
+      );
+    return (
+      <select
+        value={filters.product}
+        onChange={(e) => applyFilters({ product: e.target.value })}
+        aria-label="Filter by product"
+        className={`${cls} max-w-[160px]`}
+      >
+        <option value="all">Any product</option>
+        {products.map((p) => (
+          <option key={p} value={p}>
+            {p}
+          </option>
+        ))}
+      </select>
+    );
+  };
+
   return (
     <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6">
       <div className="mb-6">
@@ -218,7 +331,8 @@ export default function QueueView({
         />
       </div>
 
-      <div className="mb-4 flex flex-wrap items-center gap-2">
+      <div className="mb-4 space-y-2">
+        <div className="flex flex-wrap items-center gap-2">
         {/* Search: pick a field, then type a value for just that field. */}
         <div className="flex min-w-[280px] flex-1 rounded-md border border-slate-300 focus-within:border-slate-500 focus-within:ring-2 focus-within:ring-slate-200">
           <select
@@ -273,57 +387,18 @@ export default function QueueView({
           ))}
         </select>
         <select
-          value={filters.category}
+          value={filters.status}
           onChange={(e) =>
-            applyFilters({ category: e.target.value as Category | "all" })
+            applyFilters({ status: e.target.value as StatusFilter })
           }
-          aria-label="Filter by category"
+          aria-label="Filter by status"
           className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-500"
         >
-          {categoryOptions.map((c) => (
-            <option key={c} value={c}>
-              {c === "all" ? "All categories" : CATEGORY_LABEL[c]}
+          {STATUS_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
             </option>
           ))}
-        </select>
-        <select
-          value={filters.channel}
-          onChange={(e) =>
-            applyFilters({ channel: e.target.value as Channel | "all" })
-          }
-          aria-label="Filter by channel"
-          className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm capitalize outline-none focus:border-slate-500"
-        >
-          <option value="all">All channels</option>
-          {CHANNEL_OPTIONS.map((c) => (
-            <option key={c} value={c} className="capitalize">
-              {c}
-            </option>
-          ))}
-        </select>
-        <select
-          value={filters.product}
-          onChange={(e) => applyFilters({ product: e.target.value })}
-          aria-label="Filter by product"
-          className="max-w-[190px] rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-500"
-        >
-          <option value="all">All products</option>
-          {products.map((p) => (
-            <option key={p} value={p}>
-              {p}
-            </option>
-          ))}
-        </select>
-        <select
-          value={filters.sort}
-          onChange={(e) => applyFilters({ sort: e.target.value as SortKey })}
-          aria-label="Sort"
-          className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-500"
-        >
-          <option value="smart">Smart priority</option>
-          <option value="sla">SLA deadline</option>
-          <option value="newest">Newest first</option>
-          <option value="oldest">Oldest first</option>
         </select>
         <select
           value={filters.assignment}
@@ -340,35 +415,72 @@ export default function QueueView({
             </option>
           ))}
         </select>
+
+        {/* Secondary filters (category / channel / product) live behind this
+            menu so the bar stays short. Picking one reveals a chip below. */}
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setAddOpen((o) => !o)}
+            aria-haspopup="menu"
+            aria-expanded={addOpen}
+            className="inline-flex items-center gap-1 rounded-md border border-dashed border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-600 hover:border-slate-400 hover:text-slate-800"
+          >
+            <span aria-hidden>+</span> Filter
+            {activeExtraCount > 0 && (
+              <span className="ml-0.5 rounded-full bg-slate-900 px-1.5 text-xs font-semibold text-white">
+                {activeExtraCount}
+              </span>
+            )}
+          </button>
+          {addOpen && (
+            <>
+              {/* Backdrop closes the menu on outside click. */}
+              <button
+                aria-hidden
+                tabIndex={-1}
+                onClick={() => setAddOpen(false)}
+                className="fixed inset-0 z-10 cursor-default"
+              />
+              <div
+                role="menu"
+                className="absolute left-0 z-20 mt-1 w-44 rounded-md border border-slate-200 bg-white p-1 shadow-lg"
+              >
+                {addableExtras.length === 0 ? (
+                  <div className="px-2 py-1.5 text-xs text-slate-400">
+                    All filters added
+                  </div>
+                ) : (
+                  addableExtras.map((k) => (
+                    <button
+                      key={k}
+                      role="menuitem"
+                      onClick={() => addExtra(k)}
+                      className="block w-full rounded px-2 py-1.5 text-left text-sm text-slate-700 hover:bg-slate-100"
+                    >
+                      {EXTRA_LABEL[k]}
+                    </button>
+                  ))
+                )}
+              </div>
+            </>
+          )}
+        </div>
+
         <select
-          value={filters.status}
-          onChange={(e) =>
-            applyFilters({ status: e.target.value as StatusFilter })
-          }
-          aria-label="Filter by status"
+          value={filters.sort}
+          onChange={(e) => applyFilters({ sort: e.target.value as SortKey })}
+          aria-label="Sort"
           className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-500"
         >
-          {STATUS_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
-            </option>
-          ))}
+          <option value="smart">Smart priority</option>
+          <option value="sla">SLA deadline</option>
+          <option value="newest">Newest first</option>
+          <option value="oldest">Oldest first</option>
         </select>
         {filtersActive && (
           <button
-            onClick={() =>
-              applyFilters({
-                priority: "all",
-                sla: "all",
-                category: "all",
-                channel: "all",
-                product: "all",
-                query: "",
-                searchField: "subject",
-                status: "unresolved",
-                assignment: "all",
-              })
-            }
+            onClick={clearAllFilters}
             className="rounded-md px-2 py-2 text-sm font-medium text-slate-500 hover:text-slate-800"
           >
             Clear
@@ -381,6 +493,31 @@ export default function QueueView({
         >
           <span aria-hidden>⬇</span> Export CSV
         </a>
+        </div>
+
+        {/* Active secondary filters as removable chips. */}
+        {shownExtras.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2">
+            {shownExtras.map((k) => (
+              <div
+                key={k}
+                className="inline-flex items-center gap-1 rounded-md border border-slate-300 bg-white py-1 pl-2.5 pr-1"
+              >
+                <span className="text-xs font-medium text-slate-500">
+                  {EXTRA_LABEL[k]}
+                </span>
+                {extraSelect(k)}
+                <button
+                  onClick={() => removeExtra(k)}
+                  aria-label={`Remove ${EXTRA_LABEL[k]} filter`}
+                  className="rounded p-0.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Result summary — makes it explicit that filters hit the whole table */}
