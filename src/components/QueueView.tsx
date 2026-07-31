@@ -26,12 +26,13 @@ const CHANNEL_OPTIONS: Channel[] = ["email", "phone", "chat", "social"];
 
 /**
  * Secondary filters that live behind the "＋ Filter" menu rather than sitting in
- * the bar. These are the investigative ones (drill into a category / channel /
- * product) that aren't part of the every-session triage loop.
+ * the bar: field-targeted search plus the investigative drill-downs (category /
+ * channel / product). None are part of the every-session triage loop.
  */
-type ExtraKey = "category" | "channel" | "product";
-const EXTRA_KEYS: ExtraKey[] = ["category", "channel", "product"];
+type ExtraKey = "search" | "category" | "channel" | "product";
+const EXTRA_KEYS: ExtraKey[] = ["search", "category", "channel", "product"];
 const EXTRA_LABEL: Record<ExtraKey, string> = {
+  search: "Search",
   category: "Category",
   channel: "Channel",
   product: "Product",
@@ -177,7 +178,10 @@ export default function QueueView({
 
   // An extra filter is "active" once it has a real value; a chip is shown when
   // it's active OR the user just revealed it from the ＋ Filter menu.
-  const isExtraActive = (k: ExtraKey) => (filters[k] ?? "all") !== "all";
+  const isExtraActive = (k: ExtraKey) =>
+    k === "search"
+      ? Boolean(filters.query?.trim())
+      : (filters[k] ?? "all") !== "all";
   const shownExtras = EXTRA_KEYS.filter(
     (k) => isExtraActive(k) || revealed.has(k),
   );
@@ -194,11 +198,17 @@ export default function QueueView({
       next.delete(k);
       return next;
     });
-    applyFilters({ [k]: "all" });
+    if (k === "search") {
+      setQueryInput("");
+      applyFilters({ query: "", searchField: "subject" });
+    } else {
+      applyFilters({ [k]: "all" });
+    }
   };
 
   const clearAllFilters = () => {
     setRevealed(new Set());
+    setQueryInput("");
     applyFilters({
       priority: "all",
       sla: "all",
@@ -271,6 +281,66 @@ export default function QueueView({
     );
   };
 
+  /** A single active-filter chip. Search gets a field selector + text box; the
+   *  others are a labelled value dropdown. */
+  const renderChip = (k: ExtraKey) => {
+    if (k === "search")
+      return (
+        <div
+          key="search"
+          className="inline-flex items-center rounded-md border border-slate-300 bg-white"
+        >
+          <select
+            value={searchField}
+            onChange={(e) =>
+              applyFilters({ searchField: e.target.value as SearchField })
+            }
+            aria-label="Field to search"
+            className="rounded-l-md border-r border-slate-300 bg-slate-50 px-2 py-1.5 text-sm text-slate-700 outline-none"
+          >
+            {SEARCH_FIELD_OPTIONS.map((f) => (
+              <option key={f.value} value={f.value}>
+                {f.label}
+              </option>
+            ))}
+          </select>
+          <input
+            value={queryInput}
+            onChange={(e) => setQueryInput(e.target.value)}
+            inputMode={searchField === "id" ? "numeric" : undefined}
+            placeholder={activeSearchOption.placeholder}
+            aria-label={`Search by ${activeSearchOption.label}`}
+            className="w-44 min-w-0 px-2 py-1.5 text-sm outline-none"
+          />
+          <button
+            onClick={() => removeExtra("search")}
+            aria-label="Remove Search filter"
+            className="mr-1 rounded p-0.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+          >
+            ✕
+          </button>
+        </div>
+      );
+    return (
+      <div
+        key={k}
+        className="inline-flex items-center gap-1 rounded-md border border-slate-300 bg-white py-1 pl-2.5 pr-1"
+      >
+        <span className="text-xs font-medium text-slate-500">
+          {EXTRA_LABEL[k]}
+        </span>
+        {extraSelect(k)}
+        <button
+          onClick={() => removeExtra(k)}
+          aria-label={`Remove ${EXTRA_LABEL[k]} filter`}
+          className="rounded p-0.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+        >
+          ✕
+        </button>
+      </div>
+    );
+  };
+
   return (
     <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6">
       <div className="mb-6">
@@ -333,31 +403,6 @@ export default function QueueView({
 
       <div className="mb-4 space-y-2">
         <div className="flex flex-wrap items-center gap-2">
-        {/* Search: pick a field, then type a value for just that field. */}
-        <div className="flex min-w-[280px] flex-1 rounded-md border border-slate-300 focus-within:border-slate-500 focus-within:ring-2 focus-within:ring-slate-200">
-          <select
-            value={searchField}
-            onChange={(e) =>
-              applyFilters({ searchField: e.target.value as SearchField })
-            }
-            aria-label="Field to search"
-            className="shrink-0 rounded-l-md border-r border-slate-300 bg-slate-50 px-2 py-2 text-sm text-slate-700 outline-none"
-          >
-            {SEARCH_FIELD_OPTIONS.map((f) => (
-              <option key={f.value} value={f.value}>
-                {f.label}
-              </option>
-            ))}
-          </select>
-          <input
-            value={queryInput}
-            onChange={(e) => setQueryInput(e.target.value)}
-            inputMode={searchField === "id" ? "numeric" : undefined}
-            placeholder={activeSearchOption.placeholder}
-            aria-label={`Search by ${activeSearchOption.label}`}
-            className="w-full min-w-0 rounded-r-md px-3 py-2 text-sm outline-none"
-          />
-        </div>
         <select
           value={filters.priority}
           onChange={(e) =>
@@ -498,24 +543,7 @@ export default function QueueView({
         {/* Active secondary filters as removable chips. */}
         {shownExtras.length > 0 && (
           <div className="flex flex-wrap items-center gap-2">
-            {shownExtras.map((k) => (
-              <div
-                key={k}
-                className="inline-flex items-center gap-1 rounded-md border border-slate-300 bg-white py-1 pl-2.5 pr-1"
-              >
-                <span className="text-xs font-medium text-slate-500">
-                  {EXTRA_LABEL[k]}
-                </span>
-                {extraSelect(k)}
-                <button
-                  onClick={() => removeExtra(k)}
-                  aria-label={`Remove ${EXTRA_LABEL[k]} filter`}
-                  className="rounded p-0.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-                >
-                  ✕
-                </button>
-              </div>
-            ))}
+            {shownExtras.map((k) => renderChip(k))}
           </div>
         )}
       </div>
